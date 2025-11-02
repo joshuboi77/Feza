@@ -1,0 +1,29 @@
+class {{ formula_name }} < Formula
+  desc "{{ desc }}"
+  homepage "{{ homepage }}"
+  version "{{ version }}"
+
+  on_macos do
+    if Hardware::CPU.arm?
+      url "{{ url_by('macos-arm64') }}"
+      sha256 "{{ sha_by('macos-arm64') }}"
+    else
+      url "{{ url_by('macos-amd64') }}"
+      sha256 "{{ sha_by('macos-amd64') }}"
+    end
+  end
+
+  on_linux do
+    url "{{ url_by('linux-amd64') }}"
+    sha256 "{{ sha_by('linux-amd64') }}"
+  end
+
+  def install
+    bin.install "{{ name }}"
+  end
+
+  test do
+    assert_match "{{ version }}", shell_output("#{bin}/{{ name }} --version")
+  end
+end
+

@@ -1,0 +1,7 @@
+# {{ name }} {{ version }}
+
+Assets:
+{% for a in assets -%}
+- {{ a.filename }} — `{{ a.sha256 }}`
+{% endfor %}
+

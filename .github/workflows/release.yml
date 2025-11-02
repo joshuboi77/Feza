@@ -1,0 +1,223 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g., v1.2.3)"
+        required: true
+        type: string
+      name:
+        description: "Tool name"
+        required: true
+        type: string
+      targets:
+        description: "Comma-separated targets (default: macos-arm64,macos-amd64,linux-amd64)"
+        required: false
+        type: string
+        default: "macos-arm64,macos-amd64,linux-amd64"
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Feza
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Plan release
+        run: |
+          feza plan ${{ inputs.tag }} --name ${{ inputs.name }} --targets ${{ inputs.targets }}
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+
+      - name: Upload manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: manifest
+          path: dist/feza_manifest.json
+
+  build:
+    needs: plan
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-14
+            target: macos-arm64
+          - os: macos-14
+            target: macos-amd64
+          - os: ubuntu-latest
+            target: linux-amd64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Feza
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Download manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: manifest
+          path: dist/
+
+      - name: Build artifacts
+        run: |
+          echo "TODO: Build your binary for ${{ matrix.target }}"
+          echo "Binary should be placed at: build/${{ matrix.target }}/${{ inputs.name }}"
+          mkdir -p build/${{ matrix.target }}
+          touch build/${{ matrix.target }}/${{ inputs.name }}
+
+      - name: Package and compute checksums
+        run: |
+          feza build ${{ inputs.tag }} --name ${{ inputs.name }} \
+            --artifacts-dir build/ \
+            --dist dist/ \
+            --repo ${{ github.repository }}
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.target }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+      - name: Upload updated manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: manifest-updated
+          path: dist/feza_manifest.json
+
+  merge-manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all manifests
+        uses: actions/download-artifact@v4
+        with:
+          name: manifest-updated
+          path: manifests/
+
+      - name: Merge manifest
+        run: |
+          python -c "
+          import json
+          import glob
+          manifests = [json.load(open(f)) for f in glob.glob('manifests/**/feza_manifest.json', recursive=True)]
+          if manifests:
+              merged = manifests[0]
+              for m in manifests[1:]:
+                  for asset in m['assets']:
+                      existing = next((a for a in merged['assets'] if a['target'] == asset['target']), None)
+                      if existing:
+                          existing.update(asset)
+              json.dump(merged, open('dist/feza_manifest.json', 'w'), indent=2)
+          "
+
+      - name: Upload final manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: manifest-final
+          path: dist/feza_manifest.json
+
+  github:
+    needs: merge-manifest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Feza
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Install GitHub CLI
+        uses: cli/gh-action@v2
+
+      - name: Authenticate GitHub CLI
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download manifest and packages
+        uses: actions/download-artifact@v4
+        with:
+          name: manifest-final
+          path: dist/
+        continue-on-error: true
+
+      - name: Download all packages
+        uses: actions/download-artifact@v4
+        with:
+          name: package-*
+          path: dist/
+          pattern: "package-*"
+
+      - name: Create/update GitHub release
+        run: |
+          feza github ${{ inputs.tag }} --name ${{ inputs.name }} \
+            --repo ${{ github.repository }} \
+            --dist dist/ \
+            --draft
+
+  tap:
+    needs: github
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Feza
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Install GitHub CLI
+        uses: cli/gh-action@v2
+
+      - name: Authenticate GitHub CLI
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: manifest-final
+          path: dist/
+
+      - name: Push to Homebrew tap
+        run: |
+          feza tap ${{ inputs.tag }} --name ${{ inputs.name }} \
+            --tap ${{ secrets.TAP_REPO }} \
+            --formula ${{ inputs.name }} \
+            --open-pr
+        env:
+          TAP_PAT: ${{ secrets.TAP_PAT }}
+
