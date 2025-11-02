@@ -430,4 +430,3 @@ def main():
         cmd_github(args)
     elif args.command == "tap":
         cmd_tap(args)
-
