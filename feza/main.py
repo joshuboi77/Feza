@@ -599,6 +599,37 @@ def resolve_github_token(interactive=True):
     return token
 
 
+def detect_branch_conflict_error(stderr: str, branch: str, tap_repo: str) -> str | None:
+    """
+    Detect if a git push error is due to a branch conflict.
+    Returns an improved error message hint, or None if not a branch conflict.
+    """
+    stderr_lower = stderr.lower()
+
+    # Check for branch already exists patterns
+    if "remote ref already exists" in stderr_lower or "already exists" in stderr_lower:
+        return (
+            f"Error: Branch '{branch}' already exists on remote.\n"
+            f"Hint: Delete the remote branch first with:\n"
+            f"  git push origin --delete {branch}\n"
+            f"Or use a different branch name with --branch option."
+        )
+
+    # Check for rejected updates (could be conflicts or existing branch)
+    if "failed to push some refs" in stderr_lower:
+        # Check if it's specifically about existing remote ref
+        if "remote ref" in stderr_lower:
+            return (
+                f"Error: Failed to push branch '{branch}' to {tap_repo}.\n"
+                f"The branch may already exist on remote.\n"
+                f"Hint: Delete the remote branch first with:\n"
+                f"  git push origin --delete {branch}\n"
+                f"Or use a different branch name with --branch option."
+            )
+
+    return None
+
+
 def get_default_branch(repo_path: Path | str, remote: str = "origin") -> str:
     """Detect the default branch of a git repository."""
     repo_path = Path(repo_path)
@@ -926,6 +957,12 @@ def cmd_tap(args):
             )
 
             if result.returncode != 0:
+                # Check if this is a branch conflict error
+                improved_error = detect_branch_conflict_error(result.stderr, branch, args.tap)
+                if improved_error:
+                    sys.exit(improved_error)
+
+                # Otherwise, show generic error with hint about permissions
                 sys.exit(
                     f"Error: Failed to push to {args.tap}. "
                     f"GITHUB_TOKEN may not have permissions. Error: {result.stderr[:200]}"

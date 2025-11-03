@@ -14,10 +14,11 @@ import {
   ErrorCode,
   McpError,
 } from "@modelcontextprotocol/sdk/types.js";
-import { spawn } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
 import { z } from "zod";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,6 +36,56 @@ const server = new Server(
 );
 
 /**
+ * Detect project root directory by looking for git root or project indicators.
+ * Falls back to current working directory if nothing found.
+ */
+function detectProjectRoot(): string {
+  const startDir = process.cwd();
+  
+  // Try 1: Git root (most reliable for projects in git repos)
+  try {
+    const gitRoot = execSync("git rev-parse --show-toplevel", {
+      cwd: startDir,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+    if (gitRoot && existsSync(gitRoot)) {
+      return gitRoot;
+    }
+  } catch {
+    // Git command failed, continue to next method
+  }
+  
+  // Try 2: Walk up directory tree looking for project indicators
+  let currentDir = path.resolve(startDir);
+  const root = path.parse(currentDir).root;
+  
+  while (currentDir !== root) {
+    // Check for common project files
+    const indicators = [
+      "pyproject.toml",
+      "package.json",
+      "Cargo.toml",
+      "go.mod",
+      ".git",
+      "Makefile",
+    ];
+    
+    for (const indicator of indicators) {
+      if (existsSync(path.join(currentDir, indicator))) {
+        return currentDir;
+      }
+    }
+    
+    // Move up one directory
+    currentDir = path.dirname(currentDir);
+  }
+  
+  // Fallback: return current working directory
+  return startDir;
+}
+
+/**
  * Run Feza command and return result
  */
 function runFeza(
@@ -43,7 +94,7 @@ function runFeza(
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
     const cmd = "feza";
-    const workingDir = cwd || process.cwd();
+    const workingDir = cwd || detectProjectRoot();
     const childProcess = spawn(cmd, args, {
       cwd: workingDir,
       env: process.env,
@@ -109,7 +160,7 @@ const PlanSchema = z.object({
     .describe(
       "Comma-separated targets (default: macos-arm64,macos-amd64,linux-amd64)"
     ),
-  cwd: z.string().optional().describe("Working directory (default: current)"),
+  cwd: z.string().optional().describe("Working directory (default: auto-detect project root)"),
 });
 
 const BuildSchema = z.object({
@@ -131,7 +182,7 @@ const BuildSchema = z.object({
     .boolean()
     .optional()
     .describe("Disable automatic Python wrapper creation"),
-  cwd: z.string().optional().describe("Working directory (default: current)"),
+  cwd: z.string().optional().describe("Working directory (default: auto-detect project root)"),
 });
 
 const GitHubSchema = z.object({
@@ -145,7 +196,7 @@ const GitHubSchema = z.object({
     .string()
     .optional()
     .describe("Distribution directory (default: dist)"),
-  cwd: z.string().optional().describe("Working directory (default: current)"),
+  cwd: z.string().optional().describe("Working directory (default: auto-detect project root)"),
 });
 
 const TapSchema = z.object({
@@ -187,7 +238,7 @@ const TapSchema = z.object({
   repo: z.string().optional().describe("Homepage repo for formula"),
   desc: z.string().optional().describe("Formula description"),
   homepage: z.string().optional().describe("Formula homepage URL"),
-  cwd: z.string().optional().describe("Working directory (default: current)"),
+  cwd: z.string().optional().describe("Working directory (default: auto-detect project root)"),
 });
 
 // Register all tools
