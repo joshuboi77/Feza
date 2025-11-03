@@ -139,7 +139,7 @@ jobs:
       - name: Upload updated manifest
         uses: actions/upload-artifact@v4
         with:
-          name: manifest-updated
+          name: manifest-updated-${{ matrix.target }}
           path: dist/feza_manifest.json
 
   merge-manifest:
@@ -149,7 +149,7 @@ jobs:
       - name: Download all manifests
         uses: actions/download-artifact@v4
         with:
-          name: manifest-updated
+          pattern: manifest-updated-*
           path: manifests/
 
       - name: Merge manifest
