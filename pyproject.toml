@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "feza"
-version = "0.5.13"
+version = "0.5.14"
 description = "CLI tool to plan, build, publish, and tap releases for CLI apps"
 requires-python = ">=3.11"
 dependencies = [
