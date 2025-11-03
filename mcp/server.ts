@@ -26,7 +26,7 @@ const __dirname = path.dirname(__filename);
 const server = new Server(
   {
     name: "feza-mcp",
-    version: "0.5.12",
+    version: "0.5.13",
   },
   {
     capabilities: {

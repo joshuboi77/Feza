@@ -1,6 +1,6 @@
 {
   "name": "feza-mcp",
-  "version": "0.5.12",
+  "version": "0.5.13",
   "description": "Model Context Protocol server for Feza CLI tool",
   "type": "module",
   "main": "server.js",
