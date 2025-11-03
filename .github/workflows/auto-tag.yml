@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write  # Required to create tags
+      actions: write  # Required to trigger other workflows
     steps:
       - uses: actions/checkout@v4
         with:
