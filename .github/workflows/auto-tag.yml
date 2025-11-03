@@ -5,8 +5,8 @@ on:
     branches:
       - main
     paths:
-      - 'pyproject.toml'  # Only trigger on version changes
-  workflow_dispatch:  # Allow manual trigger for testing
+      - 'pyproject.toml'
+  workflow_dispatch:
 
 jobs:
   auto-tag:
@@ -16,8 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Fetch all history for tag checking
-          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
