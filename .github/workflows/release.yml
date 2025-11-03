@@ -271,6 +271,7 @@ jobs:
   tap:
     needs: [plan, github]
     runs-on: ubuntu-latest
+    if: ${{ secrets.TAP_REPO != '' && secrets.TAP_PAT != '' }}
     steps:
       - uses: actions/checkout@v4
 
