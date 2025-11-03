@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'pyproject.toml'  # Only trigger on version changes
+  workflow_dispatch:  # Allow manual trigger for testing
 
 jobs:
   auto-tag:
@@ -23,7 +24,19 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Check if pyproject.toml changed
+        id: check-change
+        run: |
+          if git diff --quiet HEAD~1 HEAD -- pyproject.toml; then
+            echo "CHANGED=false" >> $GITHUB_OUTPUT
+            echo "pyproject.toml was not changed in this commit, skipping"
+          else
+            echo "CHANGED=true" >> $GITHUB_OUTPUT
+            echo "pyproject.toml was changed, proceeding"
+          fi
+
       - name: Extract version from pyproject.toml
+        if: steps.check-change.outputs.CHANGED == 'true'
         id: version
         run: |
           python3 << 'PYEOF'
@@ -50,6 +63,7 @@ print(f"Found version: {version}, tag: {tag}")
 PYEOF
 
       - name: Check if tag already exists
+        if: steps.check-change.outputs.CHANGED == 'true'
         id: check-tag
         run: |
           TAG="${{ steps.version.outputs.TAG }}"
@@ -62,7 +76,7 @@ PYEOF
           fi
 
       - name: Create and push tag
-        if: steps.check-tag.outputs.EXISTS == 'false'
+        if: steps.check-change.outputs.CHANGED == 'true' && steps.check-tag.outputs.EXISTS == 'false'
         run: |
           TAG="${{ steps.version.outputs.TAG }}"
           VERSION="${{ steps.version.outputs.VERSION }}"
