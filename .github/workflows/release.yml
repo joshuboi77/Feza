@@ -217,9 +217,9 @@ jobs:
       - name: Download all packages
         uses: actions/download-artifact@v4
         with:
-          name: package-*
+          pattern: package-*
           path: dist/
-          pattern: "package-*"
+          merge-multiple: true
 
       - name: Create/update GitHub release
         run: |
