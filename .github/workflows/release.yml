@@ -103,10 +103,10 @@ jobs:
 
       - name: Download Python script (if exists)
         uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           name: python-script
           path: .
-          continue-on-error: true
 
       - name: Build artifacts
         run: |
@@ -209,10 +209,10 @@ jobs:
 
       - name: Download manifest and packages
         uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           name: manifest-final
           path: dist/
-        continue-on-error: true
 
       - name: Download all packages
         uses: actions/download-artifact@v4
@@ -227,6 +227,9 @@ jobs:
             --repo ${{ github.repository }} \
             --dist dist/ \
             --draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
 
   tap:
     needs: [plan, github]
