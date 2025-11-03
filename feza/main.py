@@ -652,7 +652,7 @@ brew install <package>
         (init_dir / "README.md").write_text(readme_content)
 
         # Initialize git and push
-        subprocess.run(["git", "init"], cwd=init_dir, check=True)
+        subprocess.run(["git", "init", "-b", "main"], cwd=init_dir, check=True)
         subprocess.run(
             ["git", "config", "user.name", "github-actions[bot]"],
             cwd=init_dir,
