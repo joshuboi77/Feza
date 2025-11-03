@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import tomllib
 from pathlib import Path
 
 DEFAULT_TARGETS = ["macos-arm64", "macos-amd64", "linux-amd64"]
@@ -128,7 +129,35 @@ def cmd_build(args):
                 break
 
         if not binary_path:
-            sys.exit(f"Error: binary not found in {target_dir} (looking for {manifest['name']}*)")
+            # Try auto-detecting Python project and creating wrappers
+            if not getattr(args, "no_auto_python", False):
+                entry = detect_python_entry_point(manifest["name"])
+                if entry:
+                    module, func = entry
+                    all_targets = [a["target"] for a in manifest["assets"]]
+                    print(
+                        f"Python project detected. Creating wrappers for {manifest['name']} ({module}:{func})..."
+                    )
+                    created = create_python_wrappers(
+                        manifest["name"], module, func, all_targets, artifacts_dir
+                    )
+                    print(f"Created wrappers: {', '.join(created)}")
+                    # Retry finding binary for this target
+                    if (target_dir / manifest["name"]).exists():
+                        binary_path = target_dir / manifest["name"]
+                    else:
+                        sys.exit(
+                            f"Error: wrapper creation failed - {target_dir / manifest['name']} not found after creation"
+                        )
+                else:
+                    sys.exit(
+                        f"Error: binary not found in {target_dir} (looking for {manifest['name']}*). "
+                        "Not a Python project or Python auto-detection disabled (use --no-auto-python to disable)."
+                    )
+            else:
+                sys.exit(
+                    f"Error: binary not found in {target_dir} (looking for {manifest['name']}*)"
+                )
 
         # Package to tarball
         package_path = dist_dir / filename
@@ -149,6 +178,70 @@ def cmd_build(args):
 
     write_manifest(manifest)
     print(f"Updated manifest: {MANIFEST_PATH}")
+
+
+def detect_python_entry_point(name: str) -> tuple[str, str] | None:
+    """Detect Python project and return (module, function) entry point, or None."""
+    pyproject = Path("pyproject.toml")
+    if not pyproject.exists():
+        return None
+
+    try:
+        with open(pyproject, "rb") as f:
+            data = tomllib.load(f)
+
+        # Check [project.scripts]
+        scripts = data.get("project", {}).get("scripts", {})
+        if name in scripts:
+            entry = scripts[name]
+            # Parse "module:function" or "module" format
+            if ":" in entry:
+                module, func = entry.split(":", 1)
+                return (module, func)
+            else:
+                # Assume "main" function if not specified
+                return (entry, "main")
+
+        # Check [project.entry-points.console_scripts] (alternative)
+        entry_points = data.get("project", {}).get("entry-points", {})
+        console_scripts = entry_points.get("console_scripts", {})
+        if name in console_scripts:
+            entry = console_scripts[name]
+            if ":" in entry:
+                module, func = entry.split(":", 1)
+                return (module, func)
+            else:
+                return (entry, "main")
+    except Exception:
+        # If parsing fails, silently return None
+        return None
+
+    return None
+
+
+def create_python_wrappers(
+    name: str, module: str, function: str, targets: list[str], artifacts_dir: Path
+):
+    """Create Python wrapper scripts for each target."""
+    wrapper_template = f"""#!/usr/bin/env python3
+import sys
+from {module} import {function}
+if __name__ == "__main__":
+    sys.exit({function}())
+"""
+
+    created = []
+    for target in targets:
+        target_dir = artifacts_dir / target
+        target_dir.mkdir(parents=True, exist_ok=True)
+        wrapper_path = target_dir / name
+
+        wrapper_path.write_text(wrapper_template)
+        wrapper_path.chmod(0o755)  # Make executable
+
+        created.append(str(wrapper_path))
+
+    return created
 
 
 def get_repo_from_env() -> str:
@@ -391,6 +484,11 @@ def main():
     build_parser.add_argument("--artifacts-dir", default="build", help="Artifacts directory")
     build_parser.add_argument("--dist", default="dist", help="Distribution directory")
     build_parser.add_argument("--repo", help="GitHub repo (default: GITHUB_REPOSITORY env)")
+    build_parser.add_argument(
+        "--no-auto-python",
+        action="store_true",
+        help="Disable automatic Python wrapper creation",
+    )
 
     # github
     github_parser = subparsers.add_parser("github", help="Create/update GitHub release")
