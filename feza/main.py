@@ -571,6 +571,124 @@ def resolve_github_token(interactive=True):
     return token
 
 
+def ensure_tap_repo_exists(
+    tap_repo: str, token: str, create_if_missing: bool = False, interactive: bool = True
+) -> bool:
+    """
+    Check if tap repository exists, create if missing.
+    Returns True if repo exists (or was created), False if not.
+    """
+    # Check if repo exists
+    result = subprocess.run(
+        ["gh", "repo", "view", tap_repo],
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode == 0:
+        return True  # Repo exists
+
+    # Repo doesn't exist
+    if not create_if_missing and not interactive:
+        return False  # Fail silently in non-interactive mode
+
+    if interactive:
+        print(f"⚠️  Tap repository '{tap_repo}' doesn't exist.")
+        print("Feza can create it for you automatically.")
+        choice = input("Create tap repository? [y/N]: ").strip().lower()
+        if choice != "y":
+            return False
+
+    # Create the repo
+    print(f"Creating tap repository: {tap_repo}")
+
+    # Create repo with gh CLI
+    result = subprocess.run(
+        [
+            "gh",
+            "repo",
+            "create",
+            tap_repo,
+            "--public",  # Homebrew taps should be public
+            "--description",
+            "Homebrew tap",
+            "--clone",
+            "false",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        sys.exit(f"Error: Failed to create tap repository: {result.stderr}")
+
+    # Initialize the repo structure
+    with tempfile.TemporaryDirectory() as tmpdir:
+        init_dir = Path(tmpdir) / "tap-init"
+        init_dir.mkdir()
+
+        # Create Formula directory
+        (init_dir / "Formula").mkdir()
+
+        # Extract package name from tap repo (homebrew-<name> -> <name>)
+        if "/" in tap_repo:
+            _, repo_name = tap_repo.split("/", 1)
+            package_name = repo_name.replace("homebrew-", "")
+        else:
+            package_name = "packages"
+
+        # Create README.md
+        org = tap_repo.split("/")[0] if "/" in tap_repo else "unknown"
+        readme_content = f"""# {tap_repo.split('/')[-1]}
+
+Homebrew tap for {org} packages.
+
+## Installation
+
+```bash
+brew tap {org}/{package_name}
+brew install <package>
+```
+"""
+        (init_dir / "README.md").write_text(readme_content)
+
+        # Initialize git and push
+        subprocess.run(["git", "init"], cwd=init_dir, check=True)
+        subprocess.run(
+            ["git", "config", "user.name", "github-actions[bot]"],
+            cwd=init_dir,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"],
+            cwd=init_dir,
+            check=True,
+        )
+
+        subprocess.run(["git", "add", "."], cwd=init_dir, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Initial commit: tap repository setup"],
+            cwd=init_dir,
+            check=True,
+        )
+
+        # Push to remote
+        repo_url = f"https://{token}@github.com/{tap_repo}.git"
+        subprocess.run(
+            ["git", "remote", "add", "origin", repo_url],
+            cwd=init_dir,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "push", "-u", "origin", "main"],
+            cwd=init_dir,
+            check=True,
+        )
+
+    print(f"✅ Created tap repository: {tap_repo}")
+    return True
+
+
 def cmd_tap(args):
     """Tap command: render Homebrew formula and push to tap repo."""
     tag, version = validate_tag(args.tag)
@@ -580,13 +698,30 @@ def cmd_tap(args):
         sys.exit(f"Error: manifest tag ({manifest['tag']}) does not match CLI arg ({tag})")
 
     if not args.tap:
-        sys.exit("Error: --tap required")
+        # Auto-detect tap repo if not provided
+        main_repo = args.repo or os.environ.get("GITHUB_REPOSITORY", "")
+        if main_repo:
+            org = main_repo.split("/")[0]
+            tool_name = manifest["name"].lower()
+            args.tap = f"{org}/homebrew-{tool_name}"
+            print(f"Auto-detected tap repository: {args.tap}")
+        else:
+            sys.exit("Error: --tap required or set GITHUB_REPOSITORY environment variable")
+
     if not args.formula:
         sys.exit("Error: --formula required")
 
     # Determine token automatically (interactive for local runs)
     ci_mode = os.getenv("CI") or getattr(args, "non_interactive", False)
     tap_pat = resolve_github_token(interactive=not ci_mode)
+
+    # Check/create tap repo if needed
+    create_tap = getattr(args, "create_tap", False)
+    if not ensure_tap_repo_exists(args.tap, tap_pat, create_tap, interactive=not ci_mode):
+        sys.exit(
+            f"Error: Tap repository '{args.tap}' doesn't exist. "
+            "Create it manually or use --create-tap to auto-create."
+        )
 
     # Render formula
     formula_content = render_formula(args.formula_template, manifest, args.formula, args)
@@ -849,7 +984,10 @@ def main():
     # tap
     tap_parser = subparsers.add_parser("tap", help="Render and push Homebrew formula")
     add_shared_args(tap_parser)
-    tap_parser.add_argument("--tap", required=True, help="Homebrew tap repo (org/name)")
+    tap_parser.add_argument(
+        "--tap",
+        help="Homebrew tap repo (org/name). Auto-detected from GITHUB_REPOSITORY if not provided.",
+    )
     tap_parser.add_argument("--formula", required=True, help="Formula name")
     tap_parser.add_argument("--branch", help="Branch name (default: feza/{tag})")
     tap_parser.add_argument("--open-pr", action="store_true", help="Open PR after push")
@@ -862,6 +1000,11 @@ def main():
         "--non-interactive",
         action="store_true",
         help="Disable interactive prompts (fail if no token found)",
+    )
+    tap_parser.add_argument(
+        "--create-tap",
+        action="store_true",
+        help="Automatically create tap repository if it doesn't exist",
     )
     tap_parser.add_argument(
         "--formula-template",
