@@ -272,15 +272,21 @@ def cmd_build(args):
                 package_dir = Path(entry_point[0].split(".")[0])
                 if package_dir.exists() and package_dir.is_dir():
                     # Add the entire package directory to the tarball
+                    cwd = Path.cwd().resolve()
                     for file in package_dir.rglob("*"):
                         if (
                             file.is_file()
                             and "__pycache__" not in file.parts
                             and ".pyc" not in file.name
+                            and ".DS_Store" not in file.name
                         ):
-                            # Preserve directory structure: feza/file.py -> feza/file.py
-                            arcname = file.relative_to(Path.cwd())
-                            tar.add(file, arcname=str(arcname))
+                            try:
+                                # Preserve directory structure: feza/file.py -> feza/file.py
+                                arcname = file.relative_to(cwd)
+                                tar.add(file, arcname=str(arcname))
+                            except ValueError:
+                                # Skip files that can't be relativized (e.g., outside cwd)
+                                continue
                     # Also include pyproject.toml if it exists (needed for installation)
                     pyproject = Path("pyproject.toml")
                     if pyproject.exists():
