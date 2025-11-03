@@ -612,8 +612,7 @@ def ensure_tap_repo_exists(
             "--public",  # Homebrew taps should be public
             "--description",
             "Homebrew tap",
-            "--clone",
-            "false",
+            # Note: --clone is a boolean flag. Omit it to avoid cloning.
         ],
         capture_output=True,
         text=True,
@@ -712,11 +711,13 @@ def cmd_tap(args):
         sys.exit("Error: --formula required")
 
     # Determine token automatically (interactive for local runs)
-    ci_mode = os.getenv("CI") or getattr(args, "non_interactive", False)
+    # --auto flag enables fully automatic mode (non-interactive + auto-create tap)
+    auto_mode = getattr(args, "auto", False)
+    ci_mode = os.getenv("CI") or getattr(args, "non_interactive", False) or auto_mode
     tap_pat = resolve_github_token(interactive=not ci_mode)
 
     # Check/create tap repo if needed
-    create_tap = getattr(args, "create_tap", False)
+    create_tap = getattr(args, "create_tap", False) or auto_mode
     if not ensure_tap_repo_exists(args.tap, tap_pat, create_tap, interactive=not ci_mode):
         sys.exit(
             f"Error: Tap repository '{args.tap}' doesn't exist. "
@@ -1005,6 +1006,11 @@ def main():
         "--create-tap",
         action="store_true",
         help="Automatically create tap repository if it doesn't exist",
+    )
+    tap_parser.add_argument(
+        "--auto",
+        action="store_true",
+        help="Auto-mode: non-interactive with automatic tap creation (for CI/agents)",
     )
     tap_parser.add_argument(
         "--formula-template",
