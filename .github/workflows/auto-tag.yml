@@ -27,23 +27,10 @@ jobs:
       - name: Check if pyproject.toml changed
         id: check-change
         run: |
-          # Check if this is the first commit or if pyproject.toml changed
-          if ! git rev-parse HEAD~1 >/dev/null 2>&1; then
-            # First commit, check if pyproject.toml exists
-            if [ -f pyproject.toml ]; then
-              echo "CHANGED=true" >> $GITHUB_OUTPUT
-              echo "First commit with pyproject.toml, proceeding"
-            else
-              echo "CHANGED=false" >> $GITHUB_OUTPUT
-              echo "First commit without pyproject.toml, skipping"
-            fi
-          elif git diff --quiet HEAD~1 HEAD -- pyproject.toml 2>/dev/null; then
-            echo "CHANGED=false" >> $GITHUB_OUTPUT
-            echo "pyproject.toml was not changed in this commit, skipping"
-          else
-            echo "CHANGED=true" >> $GITHUB_OUTPUT
-            echo "pyproject.toml was changed, proceeding"
-          fi
+          # Always proceed if workflow was triggered via path filter (pyproject.toml changed)
+          # The path filter already ensures pyproject.toml was modified
+          echo "CHANGED=true" >> $GITHUB_OUTPUT
+          echo "pyproject.toml changed, proceeding with tag creation"
 
       - name: Extract version from pyproject.toml
         if: steps.check-change.outputs.CHANGED == 'true'
