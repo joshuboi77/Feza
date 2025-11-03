@@ -25,7 +25,7 @@ const __dirname = path.dirname(__filename);
 const server = new Server(
   {
     name: "feza-mcp",
-    version: "0.5.10",
+    version: "0.5.12",
   },
   {
     capabilities: {
@@ -255,6 +255,130 @@ registerTool(
     return args;
   }
 );
+
+// Helper to convert Zod schema to JSON Schema
+function zodToJsonSchema(zodSchema: z.ZodTypeAny): any {
+  // Basic implementation that handles ZodObject schemas
+  const shape = zodSchema._def;
+  if (shape.typeName === "ZodObject") {
+    const jsonSchema: any = {
+      type: "object",
+      properties: {},
+      required: [],
+    };
+    const objShape = shape.shape();
+    for (const [key, value] of Object.entries(objShape)) {
+      const field = value as z.ZodTypeAny;
+      let fieldDef = field._def;
+      let isOptional = false;
+      
+      // Handle ZodOptional
+      if (fieldDef.typeName === "ZodOptional") {
+        isOptional = true;
+        fieldDef = fieldDef.innerType._def;
+      }
+      
+      // Handle ZodDefault (which wraps ZodOptional sometimes)
+      if (fieldDef.typeName === "ZodDefault") {
+        isOptional = true;
+        fieldDef = fieldDef.innerType._def;
+        // Handle nested ZodOptional
+        if (fieldDef.typeName === "ZodOptional") {
+          fieldDef = fieldDef.innerType._def;
+        }
+      }
+      
+      // Extract description
+      const description = fieldDef.description || (field as any).description;
+      
+      if (fieldDef.typeName === "ZodString") {
+        jsonSchema.properties[key] = { type: "string", description };
+      } else if (fieldDef.typeName === "ZodNumber") {
+        jsonSchema.properties[key] = { type: "number", description };
+      } else if (fieldDef.typeName === "ZodBoolean") {
+        jsonSchema.properties[key] = { type: "boolean", description };
+      } else {
+        jsonSchema.properties[key] = { description };
+      }
+      
+      if (!isOptional) {
+        jsonSchema.required.push(key);
+      }
+    }
+    return jsonSchema;
+  }
+  return { type: "object" };
+}
+
+// Register request handlers
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  return {
+    tools: tools.map((tool) => {
+      const schema = zodToJsonSchema(tool.schema);
+      return {
+        name: tool.name,
+        description: tool.description,
+        inputSchema: schema,
+      };
+    }),
+  };
+});
+
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const { name, arguments: args } = request.params;
+
+  const tool = tools.find((t) => t.name === name);
+  if (!tool) {
+    throw new McpError(
+      ErrorCode.MethodNotFound,
+      `Tool not found: ${name}`
+    );
+  }
+
+  try {
+    // Validate input with Zod schema
+    const validatedInput = tool.schema.parse(args || {});
+    
+    // Convert to Feza CLI args
+    const fezaArgs = tool.toArgs(validatedInput);
+    const cwd = validatedInput.cwd;
+
+    // Execute Feza command
+    const result = await runFeza(fezaArgs, cwd);
+
+    if (result.code !== 0) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error: ${result.stderr || "Unknown error"}\n${result.stdout}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: result.stdout || "Success",
+        },
+      ],
+    };
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        `Invalid parameters: ${error.errors.map((e) => e.message).join(", ")}`
+      );
+    }
+    throw new McpError(
+      ErrorCode.InternalError,
+      `Tool execution failed: ${error.message}`
+    );
+  }
+});
 
 // Start the server
 async function main() {
