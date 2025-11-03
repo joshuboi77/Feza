@@ -1,0 +1,78 @@
+name: Auto-Tag Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'pyproject.toml'  # Only trigger on version changes
+
+jobs:
+  auto-tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to create tags
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for tag checking
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Extract version from pyproject.toml
+        id: version
+        run: |
+          python3 << 'PYEOF'
+import os
+import tomllib
+from pathlib import Path
+
+pyproject = Path("pyproject.toml")
+with open(pyproject, "rb") as f:
+    data = tomllib.load(f)
+
+version = data.get("project", {}).get("version", "")
+if not version:
+    print("::error::No version found in pyproject.toml")
+    exit(1)
+
+tag = f"v{version}"
+output_file = os.environ.get("GITHUB_OUTPUT")
+with open(output_file, "a") as f:
+    f.write(f"VERSION={version}\n")
+    f.write(f"TAG={tag}\n")
+
+print(f"Found version: {version}, tag: {tag}")
+PYEOF
+
+      - name: Check if tag already exists
+        id: check-tag
+        run: |
+          TAG="${{ steps.version.outputs.TAG }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "EXISTS=true" >> $GITHUB_OUTPUT
+            echo "Tag $TAG already exists, skipping"
+          else
+            echo "EXISTS=false" >> $GITHUB_OUTPUT
+            echo "Tag $TAG does not exist, will create"
+          fi
+
+      - name: Create and push tag
+        if: steps.check-tag.outputs.EXISTS == 'false'
+        run: |
+          TAG="${{ steps.version.outputs.TAG }}"
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git tag -a "$TAG" -m "Release $VERSION"
+          git push origin "$TAG"
+          
+          echo "Created and pushed tag: $TAG"
+          echo "This will trigger the Release workflow automatically"
+
