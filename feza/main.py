@@ -187,7 +187,14 @@ def cmd_build(args):
 
     repo = args.repo or get_repo_from_env()
 
-    for asset in manifest["assets"]:
+    # Filter assets by target if --target is specified
+    assets_to_process = manifest["assets"]
+    if args.target:
+        assets_to_process = [a for a in manifest["assets"] if a["target"] == args.target]
+        if not assets_to_process:
+            sys.exit(f"Error: target '{args.target}' not found in manifest")
+
+    for asset in assets_to_process:
         target = asset["target"]
         filename = asset["filename"]
 
@@ -624,6 +631,9 @@ def main():
     build_parser.add_argument("--artifacts-dir", default="build", help="Artifacts directory")
     build_parser.add_argument("--dist", default="dist", help="Distribution directory")
     build_parser.add_argument("--repo", help="GitHub repo (default: GITHUB_REPOSITORY env)")
+    build_parser.add_argument(
+        "--target", help="Filter to only build this target (e.g., macos-arm64)"
+    )
     build_parser.add_argument(
         "--no-auto-python",
         action="store_true",

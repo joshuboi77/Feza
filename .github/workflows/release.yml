@@ -127,7 +127,8 @@ jobs:
           feza build ${{ needs.plan.outputs.TAG }} --name ${{ needs.plan.outputs.NAME }} \
             --artifacts-dir build/ \
             --dist dist/ \
-            --repo ${{ github.repository }}
+            --repo ${{ github.repository }} \
+            --target ${{ matrix.target }}
 
       - name: Upload package
         uses: actions/upload-artifact@v4
@@ -158,16 +159,44 @@ jobs:
           import json
           import glob
           import os
+          import sys
+          
           manifests = [json.load(open(f)) for f in glob.glob('manifests/**/feza_manifest.json', recursive=True)]
-          if manifests:
-              merged = manifests[0]
-              for m in manifests[1:]:
-                  for asset in m['assets']:
-                      existing = next((a for a in merged['assets'] if a['target'] == asset['target']), None)
-                      if existing:
-                          existing.update(asset)
-              os.makedirs('dist', exist_ok=True)
-              json.dump(merged, open('dist/feza_manifest.json', 'w'), indent=2)
+          if not manifests:
+              print('::error::No manifests found to merge')
+              sys.exit(1)
+          
+          merged = manifests[0]
+          expected_targets = {a['target'] for a in merged['assets']}
+          
+          for m in manifests[1:]:
+              for asset in m['assets']:
+                  existing = next((a for a in merged['assets'] if a['target'] == asset['target']), None)
+                  if existing:
+                      # Preserve non-empty values (prefer complete data over empty)
+                      for key in ['sha256', 'url']:
+                          if asset.get(key) and (not existing.get(key) or not existing.get(key).strip()):
+                              existing[key] = asset[key]
+                          elif not existing.get(key):
+                              existing[key] = asset.get(key, '')
+                  else:
+                      print('::warning::Unexpected target in manifest: ' + asset['target'])
+          
+          # Validate all targets have sha256 and url
+          missing = []
+          for asset in merged['assets']:
+              if not asset.get('sha256') or not asset.get('sha256').strip():
+                  missing.append(asset['target'] + ' (missing sha256)')
+              if not asset.get('url') or not asset.get('url').strip():
+                  missing.append(asset['target'] + ' (missing url)')
+          
+          if missing:
+              print('::error::Missing data in merged manifest: ' + ', '.join(missing))
+              sys.exit(1)
+          
+          os.makedirs('dist', exist_ok=True)
+          json.dump(merged, open('dist/feza_manifest.json', 'w'), indent=2)
+          print('Merged manifest with ' + str(len(merged['assets'])) + ' assets')
           "
 
       - name: Upload final manifest
@@ -270,10 +299,12 @@ jobs:
 
       - name: Push to Homebrew tap
         run: |
+          FORMULA_NAME=$(echo "${{ needs.plan.outputs.NAME }}" | awk '{print toupper(substr($0,1,1)) tolower(substr($0,2))}')
           feza tap ${{ needs.plan.outputs.TAG }} --name ${{ needs.plan.outputs.NAME }} \
             --tap ${{ secrets.TAP_REPO }} \
-            --formula ${{ needs.plan.outputs.NAME }} \
+            --formula $FORMULA_NAME \
             --open-pr
         env:
           TAP_PAT: ${{ secrets.TAP_PAT }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
