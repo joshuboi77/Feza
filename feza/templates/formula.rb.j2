@@ -28,8 +28,23 @@ class {{ formula_name }} < Formula
 {% if python_package %}
     # Install Python package so wrapper script can import it
     # The wrapper script does "from {{ python_package }}.main import main" so package must be installed
+    # Package source is included in the tarball, install from extracted source
     python3 = "python3.11"
-    system python3, "-m", "pip", "install", "--prefix", prefix, "{{ python_package }}=={{ version }}"
+    if File.exist?("pyproject.toml")
+      # Install from pyproject.toml in the extracted tarball
+      system python3, "-m", "pip", "install", "--prefix", prefix, "--no-build-isolation", "."
+    elsif File.exist?("setup.py")
+      # Fallback for setup.py
+      system python3, "-m", "pip", "install", "--prefix", prefix, "--no-build-isolation", "."
+    else
+      # Try installing package name from bundled source
+      package_dir = "{{ python_package }}"
+      if Dir.exist?(package_dir)
+        # Create a minimal setup.py if needed
+        File.write("setup.py", "from setuptools import setup; setup(name='{{ python_package }}', version='{{ version }}')")
+        system python3, "-m", "pip", "install", "--prefix", prefix, "--no-build-isolation", "."
+      end
+    end
 {% endif %}
   end
 

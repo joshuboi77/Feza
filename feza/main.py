@@ -265,6 +265,26 @@ def cmd_build(args):
 
         with tarfile.open(package_path, "w:gz") as tar:
             tar.add(binary_path, arcname=manifest["name"])
+            # For Python projects, also include the package source so Homebrew can install it
+            entry_point = detect_python_entry_point(manifest["name"])
+            if entry_point:
+                # Include the Python package directory (e.g., feza/)
+                package_dir = Path(entry_point[0].split(".")[0])
+                if package_dir.exists() and package_dir.is_dir():
+                    # Add the entire package directory to the tarball
+                    for file in package_dir.rglob("*"):
+                        if (
+                            file.is_file()
+                            and "__pycache__" not in file.parts
+                            and ".pyc" not in file.name
+                        ):
+                            # Preserve directory structure: feza/file.py -> feza/file.py
+                            arcname = file.relative_to(Path.cwd())
+                            tar.add(file, arcname=str(arcname))
+                    # Also include pyproject.toml if it exists (needed for installation)
+                    pyproject = Path("pyproject.toml")
+                    if pyproject.exists():
+                        tar.add(pyproject, arcname="pyproject.toml")
 
         # Compute SHA256
         sha256 = hashlib.sha256(package_path.read_bytes()).hexdigest()
