@@ -307,6 +307,7 @@ jobs:
           repository: ${{ steps.tap.outputs.TAP_REPO }}
           token: ${{ steps.tap.outputs.TAP_PAT }}
           path: tap-repo
+          persist-credentials: true
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -357,12 +358,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
+          # Explicitly configure git to use TAP_PAT for authentication
+          TAP_REPO="${{ steps.tap.outputs.TAP_REPO }}"
+          TAP_PAT="${{ steps.tap.outputs.TAP_PAT }}"
+          git remote set-url origin https://${TAP_PAT}@github.com/${TAP_REPO}.git
+          
           git add Formula/*.rb
           git commit -m "Update ${{ needs.plan.outputs.NAME }} to ${{ needs.plan.outputs.TAG }}" || exit 0
-          
-          # Use the persisted credentials from actions/checkout (TAP_PAT is already configured)
           git push origin main
         env:
-          # Ensure git uses the token from the checkout action's persisted credentials
           GIT_TERMINAL_PROMPT: 0
 
