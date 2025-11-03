@@ -24,16 +24,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Check if pyproject.toml changed
-        id: check-change
-        run: |
-          # Always proceed if workflow was triggered via path filter (pyproject.toml changed)
-          # The path filter already ensures pyproject.toml was modified
-          echo "CHANGED=true" >> $GITHUB_OUTPUT
-          echo "pyproject.toml changed, proceeding with tag creation"
-
       - name: Extract version from pyproject.toml
-        if: steps.check-change.outputs.CHANGED == 'true'
         id: version
         run: |
           python3 << 'PYEOF'
@@ -60,7 +51,6 @@ print(f"Found version: {version}, tag: {tag}")
 PYEOF
 
       - name: Check if tag already exists
-        if: steps.check-change.outputs.CHANGED == 'true'
         id: check-tag
         run: |
           TAG="${{ steps.version.outputs.TAG }}"
@@ -73,7 +63,7 @@ PYEOF
           fi
 
       - name: Create and push tag
-        if: steps.check-change.outputs.CHANGED == 'true' && steps.check-tag.outputs.EXISTS == 'false'
+        if: steps.check-tag.outputs.EXISTS == 'false'
         run: |
           TAG="${{ steps.version.outputs.TAG }}"
           VERSION="${{ steps.version.outputs.VERSION }}"
