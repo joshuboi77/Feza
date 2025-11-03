@@ -631,7 +631,7 @@ def get_default_branch(repo_path: Path | str, remote: str = "origin") -> str:
             if result.returncode == 0:
                 return branch
 
-        # Last resort: get first branch
+        # Last resort: get first actual branch (skip HEAD pointer)
         result = subprocess.run(
             ["git", "branch", "-r", "--format", "%(refname:short)"],
             cwd=repo_path,
@@ -640,10 +640,18 @@ def get_default_branch(repo_path: Path | str, remote: str = "origin") -> str:
             check=False,
         )
         if result.returncode == 0 and result.stdout.strip():
-            # Get first remote branch, strip origin/
-            first_branch = result.stdout.strip().split("\n")[0]
-            if "/" in first_branch:
-                return first_branch.split("/", 1)[1]
+            # Get first actual remote branch (skip "origin" line and HEAD pointer)
+            branches = [b.strip() for b in result.stdout.strip().split("\n") if b.strip()]
+            for branch in branches:
+                # Skip HEAD pointer and "origin" standalone line
+                if branch == "origin" or branch.endswith("/HEAD"):
+                    continue
+                # Extract branch name from origin/branch-name
+                if "/" in branch:
+                    branch_name = branch.split("/", 1)[1]
+                    # Skip if it's a tag (tags usually don't have slashes or are in refs/tags)
+                    # But if it looks like a branch (has / in name), use it
+                    return branch_name
     except Exception:
         pass
 
