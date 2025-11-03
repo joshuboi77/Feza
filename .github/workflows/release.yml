@@ -263,8 +263,7 @@ jobs:
         run: |
           feza github ${{ needs.plan.outputs.TAG }} --name ${{ needs.plan.outputs.NAME }} \
             --repo ${{ github.repository }} \
-            --dist dist/ \
-            --draft
+            --dist dist/
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}

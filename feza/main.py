@@ -418,8 +418,10 @@ def cmd_github(args):
     )
 
     if result.returncode != 0:
-        # Create draft release
-        cmd = ["gh", "release", "create", tag, "--repo", repo, "--draft", "--title", tag]
+        # Create release (publish if --draft not specified, otherwise draft)
+        cmd = ["gh", "release", "create", tag, "--repo", repo, "--title", tag]
+        if args.draft:
+            cmd.append("--draft")
         if args.release_notes and Path(args.release_notes).exists():
             notes = render_release_notes(args.release_notes, manifest)
             with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
