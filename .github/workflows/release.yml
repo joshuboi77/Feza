@@ -358,14 +358,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Explicitly configure git to use TAP_PAT for authentication
-          TAP_REPO="${{ steps.tap.outputs.TAP_REPO }}"
-          TAP_PAT="${{ steps.tap.outputs.TAP_PAT }}"
-          git remote set-url origin https://${TAP_PAT}@github.com/${TAP_REPO}.git
+          # Set remote URL with token for push (simple, explicit pattern)
+          git remote set-url origin https://${{ steps.tap.outputs.TAP_PAT }}@github.com/${{ steps.tap.outputs.TAP_REPO }}.git
           
           git add Formula/*.rb
           git commit -m "Update ${{ needs.plan.outputs.NAME }} to ${{ needs.plan.outputs.TAG }}" || exit 0
           git push origin main
-        env:
-          GIT_TERMINAL_PROMPT: 0
 
