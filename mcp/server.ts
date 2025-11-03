@@ -43,8 +43,9 @@ function runFeza(
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
     const cmd = "feza";
-    const process = spawn(cmd, args, {
-      cwd: cwd || process.cwd(),
+    const workingDir = cwd || process.cwd();
+    const childProcess = spawn(cmd, args, {
+      cwd: workingDir,
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -52,15 +53,15 @@ function runFeza(
     let stdout = "";
     let stderr = "";
 
-    process.stdout?.on("data", (data: Buffer) => {
+    childProcess.stdout?.on("data", (data: Buffer) => {
       stdout += data.toString();
     });
 
-    process.stderr?.on("data", (data: Buffer) => {
+    childProcess.stderr?.on("data", (data: Buffer) => {
       stderr += data.toString();
     });
 
-    process.on("close", (code) => {
+    childProcess.on("close", (code: number | null) => {
       resolve({
         code: code ?? 1,
         stdout: stdout.trim(),
@@ -68,7 +69,7 @@ function runFeza(
       });
     });
 
-    process.on("error", (error) => {
+    childProcess.on("error", (error: Error) => {
       resolve({
         code: 1,
         stdout: "",
