@@ -203,6 +203,7 @@ jobs:
           fi
 
       - name: Authenticate GitHub CLI
+        run: echo "GitHub CLI will use GH_TOKEN environment variable"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -254,6 +255,7 @@ jobs:
           fi
 
       - name: Authenticate GitHub CLI
+        run: echo "GitHub CLI will use GH_TOKEN environment variable"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
