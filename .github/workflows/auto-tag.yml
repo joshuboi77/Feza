@@ -26,28 +26,28 @@ jobs:
       - name: Extract version from pyproject.toml
         id: version
         run: |
-          python3 << 'PYEOF'
-import os
-import tomllib
-from pathlib import Path
-
-pyproject = Path("pyproject.toml")
-with open(pyproject, "rb") as f:
-    data = tomllib.load(f)
-
-version = data.get("project", {}).get("version", "")
-if not version:
-    print("::error::No version found in pyproject.toml")
-    exit(1)
-
-tag = f"v{version}"
-output_file = os.environ.get("GITHUB_OUTPUT")
-with open(output_file, "a") as f:
-    f.write(f"VERSION={version}\n")
-    f.write(f"TAG={tag}\n")
-
-print(f"Found version: {version}, tag: {tag}")
-PYEOF
+          python3 -c "
+          import os
+          import tomllib
+          from pathlib import Path
+          
+          pyproject = Path('pyproject.toml')
+          with open(pyproject, 'rb') as f:
+              data = tomllib.load(f)
+          
+          version = data.get('project', {}).get('version', '')
+          if not version:
+              print('::error::No version found in pyproject.toml')
+              exit(1)
+          
+          tag = f'v{version}'
+          output_file = os.environ.get('GITHUB_OUTPUT')
+          with open(output_file, 'a') as f:
+              f.write(f'VERSION={version}\n')
+              f.write(f'TAG={tag}\n')
+          
+          print(f'Found version: {version}, tag: {tag}')
+          "
 
       - name: Check if tag already exists
         id: check-tag
