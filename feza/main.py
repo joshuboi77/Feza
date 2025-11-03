@@ -273,7 +273,8 @@ def cmd_build(args):
                 if package_dir.exists() and package_dir.is_dir():
                     # Add the entire package directory to the tarball
                     cwd = Path.cwd().resolve()
-                    for file in package_dir.rglob("*"):
+                    package_dir_resolved = package_dir.resolve()
+                    for file in package_dir_resolved.rglob("*"):
                         if (
                             file.is_file()
                             and "__pycache__" not in file.parts
