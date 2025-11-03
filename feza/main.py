@@ -724,8 +724,17 @@ def cmd_tap(args):
             "Create it manually or use --create-tap to auto-create."
         )
 
-    # Render formula
-    formula_content = render_formula(args.formula_template, manifest, args.formula, args)
+    # Auto-capitalize formula name for class (but keep original for filename)
+    original_formula = args.formula
+    # Convert to PascalCase for class name: "crow" -> "Crow", "my-tool" -> "MyTool"
+    if original_formula:
+        parts = original_formula.replace("_", "-").split("-")
+        capitalized_formula = "".join(part.capitalize() for part in parts)
+    else:
+        capitalized_formula = original_formula
+
+    # Render formula (use capitalized name for class, original for filename logic)
+    formula_content = render_formula(args.formula_template, manifest, capitalized_formula, args)
 
     # Clone tap repo
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -754,13 +763,18 @@ def cmd_tap(args):
         # Write formula
         formula_dir = tap_dir / "Formula"
         formula_dir.mkdir(parents=True, exist_ok=True)
-        formula_path = formula_dir / f"{args.formula}.rb"
+        # Use original formula name for filename, but capitalized name for class
+        formula_filename = args.formula.lower().replace(
+            "_", "-"
+        )  # Homebrew uses lowercase filenames
+        formula_path = formula_dir / f"{formula_filename}.rb"
         formula_path.write_text(formula_content)
 
-        # Commit and push
+        # Stage files (ensure Formula directory and file are staged)
+        subprocess.run(["git", "add", str(formula_dir)], cwd=tap_dir, check=True)
         subprocess.run(["git", "add", str(formula_path)], cwd=tap_dir, check=True)
         subprocess.run(
-            ["git", "commit", "-m", f"Update {args.formula} to {tag}"],
+            ["git", "commit", "-m", f"Update {capitalized_formula} to {tag}"],
             cwd=tap_dir,
             check=True,
         )
