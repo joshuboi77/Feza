@@ -46,9 +46,9 @@ pip install -e .
 # 1. Plan your release
 feza plan v1.0.0 --name feza
 
-# 2. Build your binaries or create wrapper scripts (Feza doesn't build—you do)
+# 2. Build your binaries or create wrapper scripts
 # For compiled tools: place binaries in build/macos-arm64/feza*, build/linux-amd64/feza*, etc.
-# For Python tools: create wrapper scripts (see Python CLI Tools section)
+# For Python tools: Feza auto-detects and creates wrapper scripts automatically!
 
 # 3. Package and compute checksums (outputs to dist/*.tar.gz)
 feza build v1.0.0 --name feza --repo joshuboi77/Feza
@@ -56,12 +56,11 @@ feza build v1.0.0 --name feza --repo joshuboi77/Feza
 # 4. Create GitHub release (uses gh CLI or GITHUB_TOKEN)
 feza github v1.0.0 --name feza --repo joshuboi77/Feza
 
-# 5. Update Homebrew tap (requires TAP_PAT)
-export TAP_PAT=ghp_...
+# 5. Update Homebrew tap (auto-detects auth from gh CLI)
 feza tap v1.0.0 --name feza --tap joshuboi77/homebrew-tap --formula Feza --open-pr
 ```
 
-**Note:** Feza packages, checksums, and releases existing binaries—it does not build them. Build your binaries using your project's build system (Makefile, Go builds, Rust `cargo build --release`, etc.). For Python CLI tools, create wrapper scripts (see [Python CLI Tools](#python-cli-tools)), then use Feza to package and release them.
+**Note:** Feza packages, checksums, and releases existing binaries—it does not build them. Build your binaries using your project's build system (Makefile, Go builds, Rust `cargo build --release`, etc.). For Python CLI tools, Feza automatically detects your project and creates wrapper scripts during `feza build` (see [Python CLI Tools](#python-cli-tools)).
 
 The manifest (`dist/feza_manifest.json`) is created in step 1 and updated at each step—it's your single source of truth.
 
@@ -85,10 +84,12 @@ Creates `dist/feza_manifest.json` with empty SHA256/URL fields. Requires clean g
 ### `build` — Package Binaries
 
 ```bash
-feza build <tag> --name <tool> [--artifacts-dir build/] [--dist dist/] [--repo org/repo]
+feza build <tag> --name <tool> [--artifacts-dir build/] [--dist dist/] [--repo org/repo] [--no-auto-python]
 ```
 
-Finds pre-built binaries in `build/<target>/<name>*`, packages them to `dist/<filename>.tar.gz`, computes SHA256, and updates the manifest with checksums and canonical URLs. **Feza does not build binaries—it packages existing ones.**
+Finds pre-built binaries in `build/<target>/<name>*`, packages them to `dist/<filename>.tar.gz`, computes SHA256, and updates the manifest with checksums and canonical URLs.
+
+**For Python projects:** If binaries are missing and `create_python_binaries.sh` exists, Feza automatically runs it to create wrapper binaries (see [Python CLI Tools](#python-cli-tools)). Disable with `--no-auto-python`.
 
 **Arguments:**
 - `tag` - Release tag (must match manifest)
@@ -96,6 +97,7 @@ Finds pre-built binaries in `build/<target>/<name>*`, packages them to `dist/<fi
 - `--artifacts-dir` - Directory containing binaries (default: `build/`)
 - `--dist` - Output directory for tarballs (default: `dist/`)
 - `--repo` - GitHub repository (default: `GITHUB_REPOSITORY` env var)
+- `--no-auto-python` - Disable automatic Python wrapper creation
 
 **Example:** `feza build v1.2.3 --name feza --repo joshuboi77/Feza`
 
@@ -122,7 +124,7 @@ Creates or updates draft GitHub release and uploads assets. Uses `gh` CLI if ava
 ### `tap` — Update Homebrew Formula
 
 ```bash
-feza tap <tag> --name <tool> --tap org/tap --formula <FormulaName> [--branch feza/vX.Y.Z] [--open-pr]
+feza tap <tag> --name <tool> --tap org/tap --formula <FormulaName> [--branch feza/vX.Y.Z] [--open-pr] [--dry-run] [--non-interactive]
 ```
 
 Renders Homebrew formula from template, pushes to tap repository, and optionally opens PR.
@@ -134,12 +136,20 @@ Renders Homebrew formula from template, pushes to tap repository, and optionally
 - `--formula` - Formula class name (required, e.g., `Feza`)
 - `--branch` - Branch name (default: `feza/<tag>`)
 - `--open-pr` - Open PR after push (optional)
+- `--dry-run` - Render formula and show git commands without pushing (optional)
+- `--non-interactive` - Disable interactive prompts (fail if no token found, useful for CI)
 - `--formula-template` - Custom formula template path (optional)
 - `--repo` - Homepage repository for formula metadata
 - `--desc` - Formula description
 - `--homepage` - Formula homepage URL
 
-**Requirements:** `TAP_PAT` environment variable (GitHub token with tap repo access)
+**Authentication:** Feza automatically detects authentication in this order:
+1. `gh auth token` (if `gh` CLI is authenticated) - **recommended**
+2. `GITHUB_TOKEN` environment variable
+3. `TAP_PAT` environment variable
+4. Interactive prompt (if running locally and none found)
+
+If you have `gh` CLI authenticated (check with `gh auth status`), Feza will use it automatically—no setup required! For CI/CD, set `TAP_PAT` or `GITHUB_TOKEN` as secrets.
 
 **Example:** `feza tap v1.2.3 --name feza --tap joshuboi77/homebrew-tap --formula Feza --open-pr`
 
@@ -188,7 +198,15 @@ Use `--formula-template` or `--release-notes` to customize.
 
 - `GITHUB_REPOSITORY` - Default GitHub repository (format: `org/repo`)
 - `GITHUB_TOKEN` - GitHub token for release operations (optional if `gh` CLI is authenticated)
-- `TAP_PAT` - GitHub token for tap repository operations (required)
+- `TAP_PAT` - GitHub Personal Access Token with write access to your tap repository (optional for `feza tap` command)
+
+**Authentication Priority for `feza tap`:**
+1. `gh auth token` (automatically detected if `gh` CLI is authenticated)
+2. `GITHUB_TOKEN` environment variable
+3. `TAP_PAT` environment variable
+4. Interactive prompt (local runs only)
+
+**Note:** If you have `gh` CLI authenticated, no environment variables are needed. For CI/CD, set `TAP_PAT` or `GITHUB_TOKEN` as secrets with `repo` scope permissions.
 
 ## CI/CD Integration
 
@@ -215,20 +233,18 @@ feza github v1.0.0 --name feza --repo joshuboi77/Feza --release-notes templates/
 
 ### Python CLI Tools
 
-Feza works with Python CLI tools, but **does not automatically detect or create Python wrappers**. You must manually create wrapper scripts that act as "binaries" for packaging. This is how Feza releases itself:
+Feza automatically detects Python CLI projects and handles binary wrapper creation:
 
+- **During `feza plan`:** Automatically generates `create_python_binaries.sh` script if a Python entry point is detected
+- **During `feza build`:** Automatically runs `create_python_binaries.sh` if binaries are missing (can be disabled with `--no-auto-python`)
+
+This means for Python projects, you can simply run:
 ```bash
-# 1. Create wrapper scripts for each target (manual step)
-./create_python_binaries.sh feza feza.main
-# Creates: build/macos-arm64/feza, build/linux-amd64/feza, etc.
-
-# 2. Use Feza normally—treats wrappers as binaries
-feza plan v1.0.0 --name feza
-feza build v1.0.0 --name feza --repo joshuboi77/Feza
-feza github v1.0.0 --name feza --repo joshuboi77/Feza
+feza plan v1.0.0 --name mytool
+feza build v1.0.0 --name mytool --repo org/repo
 ```
 
-**Note:** Feza does not detect Python projects or auto-create wrappers. You need to create wrapper scripts yourself (or use a helper script like `create_python_binaries.sh`). Wrapper scripts are simple Python entry points that use `#!/usr/bin/env python3` and import your package. See [Self-Bootstrapping](#self-bootstrapping) for details.
+No manual script execution needed! The wrapper scripts are created automatically in `build/<target>/` directories.
 
 ### Self-Bootstrapping
 
@@ -262,12 +278,16 @@ Ensure binaries are placed in `build/<target>/<name>*` directories matching your
 Verify `GITHUB_TOKEN` is set or `gh` CLI is authenticated: `gh auth status`
 
 **Tap push fails**  
-Ensure `TAP_PAT` environment variable is set with a token that has write access to your tap repository.
+Feza automatically tries to detect authentication in this order: `gh auth token`, `GITHUB_TOKEN`, then `TAP_PAT`. If all fail, ensure:
+- `gh` CLI is authenticated: `gh auth login` or `gh auth status`
+- Or set `TAP_PAT` or `GITHUB_TOKEN` environment variable with `repo` scope
+- Token must have write access to your tap repository
+- For CI/CD, set the token as a GitHub Actions secret
 
 ## FAQ
 
 **Q: Can Feza work with Python CLI tools?**  
-A: Yes! Feza works with Python tools, but it does not automatically detect Python or create wrappers. You must manually create wrapper scripts (see [Python CLI Tools](#python-cli-tools)) that import your package—this is how Feza releases itself. Alternatively, use PyInstaller/cx_Freeze to create standalone executables if you prefer.
+A: Yes! Feza works with Python tools and automatically detects them
 
 **Q: Does Feza support Windows?**  
 A: Not yet in v0.x. Windows MSI/winget support is planned for future versions.

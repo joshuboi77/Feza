@@ -505,6 +505,72 @@ def cmd_github(args):
         print(f"  Uploaded: {asset['filename']}")
 
 
+def resolve_github_token(interactive=True):
+    """
+    Resolve a usable GitHub token for cross-repo operations.
+    Order of precedence:
+      1. gh auth token
+      2. GITHUB_TOKEN (env)
+      3. TAP_PAT (env)
+    If none found and interactive=True, prompt the user.
+    """
+    token = None
+    source = None
+
+    # 1. Try gh CLI
+    try:
+        gh_token = subprocess.run(
+            ["gh", "auth", "token"],
+            capture_output=True,
+            text=True,
+        )
+        if gh_token.returncode == 0 and gh_token.stdout.strip():
+            token = gh_token.stdout.strip()
+            source = "gh"
+    except Exception:
+        pass
+
+    # 2. Try environment variables
+    if not token and os.getenv("GITHUB_TOKEN"):
+        token = os.getenv("GITHUB_TOKEN")
+        source = "GITHUB_TOKEN"
+    if not token and os.getenv("TAP_PAT"):
+        token = os.getenv("TAP_PAT")
+        source = "TAP_PAT"
+
+    # 3. Interactive fallback
+    if not token and interactive:
+        print("⚠️  No GitHub token found.")
+        print("Feza can use your authenticated gh CLI or a Personal Access Token (PAT).")
+        print("Options:")
+        print("  [1] Use gh login (if already authenticated)")
+        print("  [2] Enter a Personal Access Token manually")
+        print("  [3] Cancel")
+        choice = input("Select option [1/2/3]: ").strip()
+        if choice == "1":
+            print("Attempting to use gh auth token...")
+            try:
+                gh_token = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True)
+                if gh_token.returncode == 0:
+                    token = gh_token.stdout.strip()
+                    source = "gh"
+            except Exception:
+                print("❌ gh auth token failed.")
+        elif choice == "2":
+            token = input("Enter your GitHub Personal Access Token: ").strip()
+            source = "manual"
+        else:
+            sys.exit("❌ Aborted by user.")
+
+    if not token:
+        sys.exit(
+            "❌ No usable GitHub token found. Please authenticate with `gh auth login` or set TAP_PAT."
+        )
+    else:
+        print(f"[auth] Using {source} token for tap operations.")
+    return token
+
+
 def cmd_tap(args):
     """Tap command: render Homebrew formula and push to tap repo."""
     tag, version = validate_tag(args.tag)
@@ -518,9 +584,9 @@ def cmd_tap(args):
     if not args.formula:
         sys.exit("Error: --formula required")
 
-    tap_pat = os.environ.get("TAP_PAT")
-    if not tap_pat:
-        sys.exit("Error: TAP_PAT environment variable required for tap operations")
+    # Determine token automatically (interactive for local runs)
+    ci_mode = os.getenv("CI") or getattr(args, "non_interactive", False)
+    tap_pat = resolve_github_token(interactive=not ci_mode)
 
     # Render formula
     formula_content = render_formula(args.formula_template, manifest, args.formula, args)
@@ -585,6 +651,14 @@ def cmd_tap(args):
             cwd=tap_dir,
             check=True,
         )
+
+        # Dry-run: skip push and PR operations
+        if args.dry_run:
+            print("[dry-run] Skipping git push. Formula generated successfully.")
+            print(f"[dry-run] Would push branch {branch} to {args.tap}")
+            if args.open_pr:
+                print(f"[dry-run] Would open PR for branch {branch}")
+            return
 
         # Try pushing - gh auth setup-git might make this work with GITHUB_TOKEN
         # If not, fall back to embedded token
@@ -779,6 +853,16 @@ def main():
     tap_parser.add_argument("--formula", required=True, help="Formula name")
     tap_parser.add_argument("--branch", help="Branch name (default: feza/{tag})")
     tap_parser.add_argument("--open-pr", action="store_true", help="Open PR after push")
+    tap_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Render formula and show git commands without pushing",
+    )
+    tap_parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Disable interactive prompts (fail if no token found)",
+    )
     tap_parser.add_argument(
         "--formula-template",
         help="Formula template path (default: templates/formula.rb.j2)",
