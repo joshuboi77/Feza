@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "feza"
-version = "0.2.2"
+version = "0.2.4"
 description = "CLI tool to plan, build, publish, and tap releases for CLI apps"
 requires-python = ">=3.11"
 dependencies = [
@@ -16,7 +16,7 @@ feza = "feza.main:main"
 
 [tool.ruff]
 line-length = 100
-target-version = "0.2.2"
+target-version = "py311"
 exclude = [
     ".git",
     "__pycache__",

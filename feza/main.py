@@ -56,13 +56,34 @@ def update_version_in_pyproject(new_version: str):
     pyproject = Path("pyproject.toml")
     content = pyproject.read_text()
 
-    # Find and replace version line
-    pattern = r'(version\s*=\s*")[^"]+(")'
-    replacement = f"\\g<1>{new_version}\\g<2>"
-    updated = re.sub(pattern, replacement, content)
+    # Find and replace version in [project] section only (not target-version or other version fields)
+    # Match: version = "..." but only in the [project] section
+    pattern = r'(\[project\]\s*(?:[^\[]|\[[^\]]*\])*?version\s*=\s*")[^"]+(")'
 
+    # First try the more specific pattern
+    updated = re.sub(pattern, f"\\g<1>{new_version}\\g<2>", content, flags=re.DOTALL)
+
+    # If that didn't work, try a simpler pattern that matches version right after [project]
     if updated == content:
-        sys.exit("Error: could not find version in pyproject.toml")
+        pattern = r'(\[project\]\s*(?:[^\[]|\n)*?version\s*=\s*")[^"]+(")'
+        updated = re.sub(pattern, f"\\g<1>{new_version}\\g<2>", content, flags=re.DOTALL)
+
+    # If still no match, use line-by-line replacement in [project] section
+    if updated == content:
+        lines = content.split("\n")
+        in_project_section = False
+        for i, line in enumerate(lines):
+            if line.strip().startswith("[project]"):
+                in_project_section = True
+            elif line.strip().startswith("[") and not line.strip().startswith("[project."):
+                in_project_section = False
+            elif in_project_section and re.match(r'^\s*version\s*=\s*"[^"]+"', line):
+                lines[i] = re.sub(r'(version\s*=\s*")[^"]+(")', f"\\g<1>{new_version}\\g<2>", line)
+                updated = "\n".join(lines)
+                break
+
+        if updated == content:
+            sys.exit("Error: could not find version in [project] section of pyproject.toml")
 
     pyproject.write_text(updated)
     print(f'Updated pyproject.toml: version = "{new_version}"')
