@@ -492,6 +492,18 @@ def cmd_tap(args):
         branch = args.branch or f"feza/{tag}"
         subprocess.run(["git", "checkout", "-b", branch], cwd=tap_dir, check=True)
 
+        # Configure git user for commits
+        subprocess.run(
+            ["git", "config", "user.name", "github-actions[bot]"],
+            cwd=tap_dir,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"],
+            cwd=tap_dir,
+            check=True,
+        )
+
         # Write formula
         formula_dir = tap_dir / "Formula"
         formula_dir.mkdir(parents=True, exist_ok=True)
