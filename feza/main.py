@@ -27,6 +27,47 @@ def validate_tag(tag: str) -> tuple[str, str]:
     return tag, version
 
 
+def validate_version(version: str) -> str:
+    """Validate version format."""
+    if not re.match(r"^\d+\.\d+\.\d+$", version):
+        sys.exit(f"Error: version must match ^\\d+\\.\\d+\\.\\d+$ (got: {version})")
+    return version
+
+
+def get_current_version() -> str:
+    """Get current version from pyproject.toml."""
+    pyproject = Path("pyproject.toml")
+    if not pyproject.exists():
+        sys.exit("Error: pyproject.toml not found")
+
+    try:
+        with open(pyproject, "rb") as f:
+            data = tomllib.load(f)
+        version = data.get("project", {}).get("version", "")
+        if not version:
+            sys.exit("Error: version not found in pyproject.toml")
+        return version
+    except Exception as e:
+        sys.exit(f"Error: failed to read pyproject.toml: {e}")
+
+
+def update_version_in_pyproject(new_version: str):
+    """Update version in pyproject.toml."""
+    pyproject = Path("pyproject.toml")
+    content = pyproject.read_text()
+
+    # Find and replace version line
+    pattern = r'(version\s*=\s*")[^"]+(")'
+    replacement = f"\\g<1>{new_version}\\g<2>"
+    updated = re.sub(pattern, replacement, content)
+
+    if updated == content:
+        sys.exit("Error: could not find version in pyproject.toml")
+
+    pyproject.write_text(updated)
+    print(f'Updated pyproject.toml: version = "{new_version}"')
+
+
 def ensure_clean_working_tree():
     """Check if working tree is clean, exit if dirty."""
     result = subprocess.run(
@@ -252,6 +293,69 @@ if __name__ == "__main__":
     script_path.chmod(0o755)  # Make executable
 
     return script_path
+
+
+def cmd_bump(args):
+    """Bump command: update version in pyproject.toml."""
+    current_version = get_current_version()
+    current_tag = f"v{current_version}"
+
+    print(f"Current version: {current_version} (tag: {current_tag})")
+
+    if args.version:
+        new_version = validate_version(args.version)
+    else:
+        # Interactive prompt
+        new_version_input = input("Enter new version (e.g., 0.2.0): ").strip()
+        if not new_version_input:
+            sys.exit("Error: version is required")
+        new_version = validate_version(new_version_input)
+
+    if new_version == current_version:
+        sys.exit(f"Error: new version ({new_version}) is same as current version")
+
+    print(f"\nUpdating version: {current_version} → {new_version}")
+
+    # Update pyproject.toml
+    update_version_in_pyproject(new_version)
+
+    # Commit if requested
+    if args.commit or args.push:
+        result = subprocess.run(
+            ["git", "add", "pyproject.toml"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            sys.exit(f"Error: failed to stage pyproject.toml: {result.stderr}")
+
+        tag = f"v{new_version}"
+        result = subprocess.run(
+            ["git", "commit", "-m", f"chore: bump version to {new_version}"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            sys.exit(f"Error: failed to commit: {result.stderr}")
+        print("Committed version change")
+
+    # Push if requested
+    if args.push:
+        if not args.commit:
+            sys.exit("Error: --push requires --commit")
+
+        result = subprocess.run(
+            ["git", "push", "origin", "HEAD"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            sys.exit(f"Error: failed to push: {result.stderr}")
+        print(f"Pushed to origin. Auto-tag workflow will create tag {tag} automatically")
+
+    print(f"\n✓ Version updated to {new_version}")
+    if not args.commit:
+        print("Run 'feza bump --commit --push' to commit and push (triggers auto-release)")
 
 
 def get_repo_from_env() -> str:
@@ -518,6 +622,23 @@ def main():
     )
     github_parser.add_argument("--dist", default="dist", help="Distribution directory")
 
+    # bump
+    bump_parser = subparsers.add_parser("bump", help="Bump version in pyproject.toml")
+    bump_parser.add_argument(
+        "--version",
+        help="New version (e.g., 0.2.0). If not provided, will prompt interactively.",
+    )
+    bump_parser.add_argument(
+        "--commit",
+        action="store_true",
+        help="Commit the version change",
+    )
+    bump_parser.add_argument(
+        "--push",
+        action="store_true",
+        help="Push to remote (requires --commit)",
+    )
+
     # tap
     tap_parser = subparsers.add_parser("tap", help="Render and push Homebrew formula")
     add_shared_args(tap_parser)
@@ -541,5 +662,7 @@ def main():
         cmd_build(args)
     elif args.command == "github":
         cmd_github(args)
+    elif args.command == "bump":
+        cmd_bump(args)
     elif args.command == "tap":
         cmd_tap(args)
