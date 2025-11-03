@@ -518,30 +518,24 @@ def cmd_tap(args):
             check=True,
         )
 
-        # Use git credential helper with gh CLI for authentication
-        # This allows GITHUB_TOKEN to work for cross-repo pushes
+        # Set up remote URL with embedded token for authentication
+        push_url = f"https://{tap_pat}@github.com/{args.tap}.git"
         subprocess.run(
-            ["git", "config", "credential.helper", "store"],
+            ["git", "remote", "set-url", "origin", push_url],
             cwd=tap_dir,
             check=True,
         )
 
-        # Write credentials to git credential store
-        credential_file = tap_dir / ".git" / "credentials"
-        credential_file.parent.mkdir(parents=True, exist_ok=True)
-        credential_file.write_text(f"https://{tap_pat}@github.com\n")
-
-        # Set up remote and push
-        subprocess.run(
-            ["git", "remote", "set-url", "origin", f"https://github.com/{args.tap}.git"],
-            cwd=tap_dir,
-            check=True,
-        )
+        # Disable credential prompts and push
+        env = os.environ.copy()
+        env["GIT_TERMINAL_PROMPT"] = "0"
+        env["GIT_ASKPASS"] = "echo"  # Return empty string to avoid prompts
 
         subprocess.run(
             ["git", "push", "origin", branch],
             cwd=tap_dir,
             check=True,
+            env=env,
         )
 
         print(f"Pushed branch {branch} to {args.tap}")
