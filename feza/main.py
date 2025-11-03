@@ -264,7 +264,8 @@ def cmd_build(args):
         package_path = dist_dir / filename
 
         with tarfile.open(package_path, "w:gz") as tar:
-            tar.add(binary_path, arcname=manifest["name"])
+            # Add the wrapper script to bin/ directory to avoid conflicts with package directory
+            tar.add(binary_path, arcname=f"bin/{manifest['name']}")
             # For Python projects, also include the package source so Homebrew can install it
             entry_point = detect_python_entry_point(manifest["name"])
             if entry_point:

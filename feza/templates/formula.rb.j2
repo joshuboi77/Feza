@@ -24,7 +24,8 @@ class {{ formula_name }} < Formula
   end
 
   def install
-    bin.install "{{ name }}"
+    # Install wrapper script from bin/ directory in tarball
+    bin.install "bin/{{ name }}" => "{{ name }}"
 {% if python_package %}
     # Install Python package so wrapper script can import it
     # The wrapper script does "from {{ python_package }}.main import main" so package must be installed
