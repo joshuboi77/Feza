@@ -603,18 +603,21 @@ def get_default_branch(repo_path: Path | str, remote: str = "origin") -> str:
     """Detect the default branch of a git repository."""
     repo_path = Path(repo_path)
     try:
-        # Try to get default branch from remote
+        # Try to get default branch from remote HEAD
         result = subprocess.run(
-            ["git", "symbolic-ref", "refs/remotes/origin/HEAD"],
+            ["git", "symbolic-ref", f"refs/remotes/{remote}/HEAD"],
             cwd=repo_path,
             capture_output=True,
             text=True,
             check=False,
         )
         if result.returncode == 0:
-            # Extract branch name from refs/remotes/origin/HEAD -> refs/remotes/origin/main
-            branch = result.stdout.strip().split("/")[-1]
-            return branch
+            # Extract branch name: refs/remotes/origin/feza/v0.1.0 -> feza/v0.1.0
+            ref = result.stdout.strip()
+            prefix = f"refs/remotes/{remote}/"
+            if ref.startswith(prefix):
+                branch = ref[len(prefix) :]
+                return branch
 
         # Fallback: try common branch names
         for branch in ["main", "master", "default"]:
