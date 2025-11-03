@@ -157,6 +157,7 @@ jobs:
           python -c "
           import json
           import glob
+          import os
           manifests = [json.load(open(f)) for f in glob.glob('manifests/**/feza_manifest.json', recursive=True)]
           if manifests:
               merged = manifests[0]
@@ -165,6 +166,7 @@ jobs:
                       existing = next((a for a in merged['assets'] if a['target'] == asset['target']), None)
                       if existing:
                           existing.update(asset)
+              os.makedirs('dist', exist_ok=True)
               json.dump(merged, open('dist/feza_manifest.json', 'w'), indent=2)
           "
 
