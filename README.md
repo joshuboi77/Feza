@@ -1,9 +1,6 @@
-# Feza
+# Feza | フェザー | Feather [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/) [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**Plan, build, publish, and tap releases for CLI apps with a reproducible manifest as the single source of truth.**
-
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+**Plan, build, publish, and tap releases for CLI apps with a reproducible workflow as light as a feather.**
 
 Feza automates the entire release workflow for command-line tools: planning target matrices, packaging binaries, creating GitHub releases, and updating Homebrew formulas—all from a single manifest file (`dist/feza_manifest.json`).
 
