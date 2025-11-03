@@ -271,7 +271,7 @@ jobs:
   tap:
     needs: [plan, github]
     runs-on: ubuntu-latest
-    if: ${{ secrets.TAP_REPO != '' && secrets.TAP_PAT != '' }}
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -306,14 +306,39 @@ jobs:
           name: manifest-final
           path: dist/
 
+      - name: Determine tap repository
+        id: tap
+        run: |
+          # Use explicit TAP_REPO secret if set, otherwise auto-detect: {org}/homebrew-tap
+          ORG=$(echo "${{ github.repository }}" | cut -d'/' -f1)
+          TAP_REPO="${{ secrets.TAP_REPO }}"
+          if [ -z "$TAP_REPO" ]; then
+            TAP_REPO="${ORG}/homebrew-tap"
+            echo "Auto-detected tap repo: $TAP_REPO"
+          else
+            echo "Using configured tap repo: $TAP_REPO"
+          fi
+          echo "TAP_REPO=${TAP_REPO}" >> $GITHUB_OUTPUT
+          
+          # Use TAP_PAT if set, otherwise fall back to GITHUB_TOKEN
+          TAP_PAT="${{ secrets.TAP_PAT }}"
+          if [ -z "$TAP_PAT" ]; then
+            TAP_PAT="${{ secrets.GITHUB_TOKEN }}"
+            echo "Using GITHUB_TOKEN for tap operations"
+          else
+            echo "Using configured TAP_PAT"
+          fi
+          echo "TAP_PAT=${TAP_PAT}" >> $GITHUB_OUTPUT
+
       - name: Push to Homebrew tap
         run: |
           FORMULA_NAME=$(echo "${{ needs.plan.outputs.NAME }}" | awk '{print toupper(substr($0,1,1)) tolower(substr($0,2))}')
           feza tap ${{ needs.plan.outputs.TAG }} --name ${{ needs.plan.outputs.NAME }} \
-            --tap ${{ secrets.TAP_REPO }} \
+            --tap ${{ steps.tap.outputs.TAP_REPO }} \
             --formula $FORMULA_NAME \
-            --open-pr
+            --open-pr \
+            --repo ${{ github.repository }}
         env:
-          TAP_PAT: ${{ secrets.TAP_PAT }}
+          TAP_PAT: ${{ steps.tap.outputs.TAP_PAT }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

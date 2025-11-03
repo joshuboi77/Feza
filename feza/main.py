@@ -650,8 +650,7 @@ def main():
     github_parser.add_argument(
         "--draft",
         action="store_true",
-        default=True,
-        help="Create as draft release (default: true)",
+        help="Create as draft release (default: false, publishes immediately)",
     )
     github_parser.add_argument("--dist", default="dist", help="Distribution directory")
 
