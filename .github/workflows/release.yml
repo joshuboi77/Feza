@@ -382,11 +382,15 @@ jobs:
           # Push branch (not main)
           git push origin $BRANCH_NAME || exit 0
           
+          # Detect default branch dynamically (don't hardcode main)
+          DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || git branch -r --format '%(refname:short)' | head -1 | sed 's@origin/@@' || echo "main")
+          echo "Detected default branch: $DEFAULT_BRANCH"
+          
           # Create PR using gh CLI
           echo "${{ steps.tap.outputs.TAP_PAT }}" | gh auth login --with-token
           gh pr create \
             --repo ${{ steps.tap.outputs.TAP_REPO }} \
-            --base main \
+            --base "$DEFAULT_BRANCH" \
             --head $BRANCH_NAME \
             --title "Update ${{ needs.plan.outputs.NAME }} to ${{ needs.plan.outputs.TAG }}" \
             --body "Automated update via Feza workflow for ${{ needs.plan.outputs.TAG }}" \

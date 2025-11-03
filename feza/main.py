@@ -599,6 +599,55 @@ def resolve_github_token(interactive=True):
     return token
 
 
+def get_default_branch(repo_path: Path | str, remote: str = "origin") -> str:
+    """Detect the default branch of a git repository."""
+    repo_path = Path(repo_path)
+    try:
+        # Try to get default branch from remote
+        result = subprocess.run(
+            ["git", "symbolic-ref", "refs/remotes/origin/HEAD"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            # Extract branch name from refs/remotes/origin/HEAD -> refs/remotes/origin/main
+            branch = result.stdout.strip().split("/")[-1]
+            return branch
+
+        # Fallback: try common branch names
+        for branch in ["main", "master", "default"]:
+            result = subprocess.run(
+                ["git", "show-ref", f"refs/remotes/{remote}/{branch}"],
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if result.returncode == 0:
+                return branch
+
+        # Last resort: get first branch
+        result = subprocess.run(
+            ["git", "branch", "-r", "--format", "%(refname:short)"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            # Get first remote branch, strip origin/
+            first_branch = result.stdout.strip().split("\n")[0]
+            if "/" in first_branch:
+                return first_branch.split("/", 1)[1]
+    except Exception:
+        pass
+
+    # Final fallback
+    return "main"
+
+
 def ensure_tap_repo_exists(
     tap_repo: str, token: str, create_if_missing: bool = False, interactive: bool = True
 ) -> bool:
@@ -875,6 +924,9 @@ def cmd_tap(args):
 
         # Open PR if requested
         if args.open_pr:
+            # Detect default branch dynamically instead of hardcoding "main"
+            default_branch = get_default_branch(tap_dir)
+            print(f"Using base branch: {default_branch}")
             subprocess.run(
                 [
                     "gh",
@@ -883,7 +935,7 @@ def cmd_tap(args):
                     "--repo",
                     args.tap,
                     "--base",
-                    "main",
+                    default_branch,
                     "--head",
                     branch,
                     "--title",
