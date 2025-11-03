@@ -518,7 +518,8 @@ def cmd_tap(args):
             check=True,
         )
 
-        # Set up remote URL with embedded token for authentication
+        # Set up remote URL - if using GITHUB_TOKEN, it only works for same repo
+        # For cross-repo pushes, TAP_PAT (PAT) is required
         push_url = f"https://{tap_pat}@github.com/{args.tap}.git"
         subprocess.run(
             ["git", "remote", "set-url", "origin", push_url],
@@ -529,14 +530,25 @@ def cmd_tap(args):
         # Disable credential prompts and push
         env = os.environ.copy()
         env["GIT_TERMINAL_PROMPT"] = "0"
-        env["GIT_ASKPASS"] = "echo"  # Return empty string to avoid prompts
 
-        subprocess.run(
+        # Try pushing - GITHUB_TOKEN won't work for cross-repo, need PAT
+        result = subprocess.run(
             ["git", "push", "origin", branch],
             cwd=tap_dir,
-            check=True,
+            capture_output=True,
+            text=True,
             env=env,
         )
+
+        if result.returncode != 0:
+            if "GITHUB_TOKEN" in tap_pat or os.environ.get("TAP_PAT") != tap_pat:
+                sys.exit(
+                    f"Error: Failed to push to {args.tap}. "
+                    "GITHUB_TOKEN only works for the current repository. "
+                    "Please set TAP_PAT secret with a Personal Access Token that has write access to the tap repository."
+                )
+            else:
+                sys.exit(f"Error: Failed to push to {args.tap}: {result.stderr}")
 
         print(f"Pushed branch {branch} to {args.tap}")
 
