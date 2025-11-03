@@ -274,37 +274,8 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-
-      - name: Install Feza
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e .
-
-      - name: Install GitHub CLI
-        run: |
-          if ! command -v gh &> /dev/null; then
-            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-            sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
-            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-            sudo apt update
-            sudo apt install gh -y
-          fi
-
-      - name: Authenticate GitHub CLI
-        run: echo "GitHub CLI will use GH_TOKEN environment variable"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Download manifest
-        uses: actions/download-artifact@v4
-        with:
-          name: manifest-final
-          path: dist/
+          path: main-repo
 
       - name: Determine tap repository
         id: tap
@@ -324,21 +295,73 @@ jobs:
           TAP_PAT="${{ secrets.TAP_PAT }}"
           if [ -z "$TAP_PAT" ]; then
             TAP_PAT="${{ secrets.GITHUB_TOKEN }}"
-            echo "Using GITHUB_TOKEN for tap operations"
+            echo "Using GITHUB_TOKEN for tap operations (may not work for cross-repo)"
           else
             echo "Using configured TAP_PAT"
           fi
           echo "TAP_PAT=${TAP_PAT}" >> $GITHUB_OUTPUT
 
-      - name: Push to Homebrew tap
+      - name: Checkout tap repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.tap.outputs.TAP_REPO }}
+          token: ${{ steps.tap.outputs.TAP_PAT }}
+          path: tap-repo
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Feza
         run: |
+          python -m pip install --upgrade pip
+          pip install -e ./main-repo
+
+      - name: Download manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: manifest-final
+          path: main-repo/dist/
+
+      - name: Generate and update formula
+        run: |
+          cd main-repo
           FORMULA_NAME=$(echo "${{ needs.plan.outputs.NAME }}" | awk '{print toupper(substr($0,1,1)) tolower(substr($0,2))}')
-          feza tap ${{ needs.plan.outputs.TAG }} --name ${{ needs.plan.outputs.NAME }} \
-            --tap ${{ steps.tap.outputs.TAP_REPO }} \
-            --formula $FORMULA_NAME \
-            --open-pr \
-            --repo ${{ github.repository }}
-        env:
-          TAP_PAT: ${{ steps.tap.outputs.TAP_PAT }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+          python -c "
+          import sys
+          sys.path.insert(0, '.')
+          from feza.main import render_formula
+          import json
+          
+          manifest = json.load(open('dist/feza_manifest.json'))
+          
+          class Args:
+              repo = '${{ github.repository }}'
+              desc = 'CLI tool'
+              homepage = 'https://github.com/${{ github.repository }}'
+          
+          args = Args()
+          formula_content = render_formula(None, manifest, '${FORMULA_NAME}', args)
+          
+          with open('../tap-repo/Formula/${FORMULA_NAME}.rb', 'w') as f:
+              f.write(formula_content)
+          
+          print('Generated formula: Formula/${FORMULA_NAME}.rb')
+          "
+
+      - name: Commit and push to tap
+        run: |
+          cd tap-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Configure remote URL with token for push (actions/checkout sets up clone, but we need auth for push)
+          TAP_REPO="${{ steps.tap.outputs.TAP_REPO }}"
+          git remote set-url origin https://x-access-token:${{ steps.tap.outputs.TAP_PAT }}@github.com/${TAP_REPO}.git
+          
+          git add Formula/*.rb
+          git commit -m "Update ${{ needs.plan.outputs.NAME }} to ${{ needs.plan.outputs.TAG }}" || exit 0
+          git push origin main
 
