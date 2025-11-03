@@ -900,12 +900,32 @@ def render_formula(template_path: str | None, manifest: dict, formula_name: str,
                 return asset["sha256"]
         return ""
 
+    # Detect if this is a Python project that needs package installation
+    # Check if we're in a directory with pyproject.toml and can determine package name
+    # Python wrapper scripts need the package installed so imports work
+    python_package = None
+    try:
+        # Try to get package name from pyproject.toml if we can detect it
+        # The wrapper script imports from this package, so we need it installed
+        pyproject = Path("pyproject.toml")
+        if pyproject.exists():
+            with open(pyproject, "rb") as f:
+                data = tomllib.load(f)
+                project_name = data.get("project", {}).get("name")
+                if project_name:
+                    python_package = project_name
+    except Exception:
+        # If we can't detect, assume not Python (for compiled binaries)
+        # Will only add pip install if python_package is set
+        pass
+
     return template.render(
         formula_name=formula_name,
         name=manifest["name"],
         version=manifest["version"],
         desc=getattr(args, "desc", "CLI tool"),
         homepage=getattr(args, "homepage", f"https://github.com/{args.repo or 'unknown/repo'}"),
+        python_package=python_package,
         url_by=url_by,
         sha_by=sha_by,
     )

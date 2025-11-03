@@ -3,6 +3,11 @@ class {{ formula_name }} < Formula
   homepage "{{ homepage }}"
   version "{{ version }}"
 
+{% if python_package %}
+  # Python package - install via pip so wrapper script can import it
+  depends_on "python@3.11"
+
+{% endif %}
   on_macos do
     if Hardware::CPU.arm?
       url "{{ url_by('macos-arm64') }}"
@@ -20,6 +25,12 @@ class {{ formula_name }} < Formula
 
   def install
     bin.install "{{ name }}"
+{% if python_package %}
+    # Install Python package so wrapper script can import it
+    # The wrapper script does "from {{ python_package }}.main import main" so package must be installed
+    python3 = "python3.11"
+    system python3, "-m", "pip", "install", "--prefix", prefix, "{{ python_package }}=={{ version }}"
+{% endif %}
   end
 
   test do
