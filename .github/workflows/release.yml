@@ -352,16 +352,43 @@ jobs:
           print('Generated formula: Formula/${FORMULA_NAME}.rb')
           "
 
-      - name: Commit and push to tap
+      - name: Install GitHub CLI
+        run: |
+          if ! command -v gh &> /dev/null; then
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+            sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+            sudo apt update
+            sudo apt install gh -y
+          fi
+
+      - name: Create PR for tap update
         run: |
           cd tap-repo
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Set remote URL with token for push (simple, explicit pattern)
+          # Set remote URL with token for push
           git remote set-url origin https://${{ steps.tap.outputs.TAP_PAT }}@github.com/${{ steps.tap.outputs.TAP_REPO }}.git
           
+          # Create branch for PR (same pattern as feza tap command)
+          BRANCH_NAME="feza/${{ needs.plan.outputs.TAG }}"
+          git checkout -b $BRANCH_NAME
+          
+          # Commit formula changes
           git add Formula/*.rb
           git commit -m "Update ${{ needs.plan.outputs.NAME }} to ${{ needs.plan.outputs.TAG }}" || exit 0
-          git push origin main
+          
+          # Push branch (not main)
+          git push origin $BRANCH_NAME || exit 0
+          
+          # Create PR using gh CLI
+          echo "${{ steps.tap.outputs.TAP_PAT }}" | gh auth login --with-token
+          gh pr create \
+            --repo ${{ steps.tap.outputs.TAP_REPO }} \
+            --base main \
+            --head $BRANCH_NAME \
+            --title "Update ${{ needs.plan.outputs.NAME }} to ${{ needs.plan.outputs.TAG }}" \
+            --body "Automated update via Feza workflow for ${{ needs.plan.outputs.TAG }}" \
+            || echo "PR may already exist or creation failed"
 
