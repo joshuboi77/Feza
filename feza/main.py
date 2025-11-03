@@ -194,6 +194,49 @@ def cmd_build(args):
         if not assets_to_process:
             sys.exit(f"Error: target '{args.target}' not found in manifest")
 
+    # Auto-run create_python_binaries.sh if needed
+    if not getattr(args, "no_auto_python", False):
+        # Check if any binaries are missing
+        missing_targets = []
+        for asset in assets_to_process:
+            target = asset["target"]
+            target_dir = artifacts_dir / target
+            binary_exists = False
+            if target_dir.exists():
+                for item in target_dir.iterdir():
+                    if item.is_file() and item.name.startswith(manifest["name"]):
+                        binary_exists = True
+                        break
+            if not binary_exists:
+                missing_targets.append(target)
+
+        # If binaries are missing, try to auto-run the script
+        if missing_targets:
+            script_path = Path("create_python_binaries.sh").resolve()
+            entry = detect_python_entry_point(manifest["name"])
+
+            if entry and script_path.exists():
+                module, func = entry
+                print(
+                    f"\nPython project detected: {manifest['name']} ({module}:{func})", flush=True
+                )
+                print(f"Binaries missing for targets: {', '.join(missing_targets)}", flush=True)
+                print(f"Auto-running {script_path} to create wrapper binaries...\n", flush=True)
+
+                # Ensure script is executable
+                script_path.chmod(0o755)
+
+                result = subprocess.run(
+                    ["/bin/bash", str(script_path)],
+                    capture_output=False,
+                    check=False,
+                )
+
+                if result.returncode != 0:
+                    sys.exit(f"Error: failed to run {script_path} (exit code: {result.returncode})")
+
+                print(f"Successfully created wrapper binaries via {script_path}\n", flush=True)
+
     for asset in assets_to_process:
         target = asset["target"]
         filename = asset["filename"]
@@ -212,7 +255,9 @@ def cmd_build(args):
         if not binary_path:
             sys.exit(
                 f"Error: binary not found in {target_dir} (looking for {manifest['name']}*). "
-                "Not a Python project or Python auto-detection disabled (use --no-auto-python to disable)."
+                "Ensure binaries are built and placed in the artifacts directory, "
+                "or run create_python_binaries.sh manually for Python projects. "
+                "Use --no-auto-python to disable automatic script execution."
             )
 
         # Package to tarball
