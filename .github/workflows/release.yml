@@ -110,12 +110,18 @@ jobs:
 
       - name: Build artifacts
         run: |
-          # If create_python_binaries.sh exists, run it to create Python wrappers
-          if [ -f create_python_binaries.sh ]; then
-            echo "Python project detected - running create_python_binaries.sh"
-            chmod +x create_python_binaries.sh
-            ./create_python_binaries.sh
+          # Find create_python_binaries.sh (artifact download might put it in a subdirectory)
+          SCRIPT_PATH=$(find . -name "create_python_binaries.sh" -type f 2>/dev/null | head -1)
+          
+          if [ -n "$SCRIPT_PATH" ] && [ -f "$SCRIPT_PATH" ]; then
+            echo "Python project detected - found script at: $SCRIPT_PATH"
+            echo "Running create_python_binaries.sh to create wrapper binaries..."
+            chmod +x "$SCRIPT_PATH"
+            "$SCRIPT_PATH"
+            echo "Verifying binaries were created:"
+            ls -la build/*/ || echo "No build directories found"
           else
+            echo "Warning: create_python_binaries.sh not found"
             echo "TODO: Build your binary for ${{ matrix.target }}"
             echo "Binary should be placed at: build/${{ matrix.target }}/${{ needs.plan.outputs.NAME }}"
             mkdir -p build/${{ matrix.target }}
