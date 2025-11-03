@@ -1,6 +1,9 @@
 name: Release
 
 on:
+  push:
+    tags:
+      - 'v*'  # Triggers on any tag starting with 'v'
   workflow_dispatch:
     inputs:
       tag:
@@ -20,6 +23,10 @@ on:
 jobs:
   plan:
     runs-on: ubuntu-latest
+    outputs:
+      TAG: ${{ steps.vars.outputs.TAG }}
+      NAME: ${{ steps.vars.outputs.NAME }}
+      TARGETS: ${{ steps.vars.outputs.TARGETS }}
     steps:
       - uses: actions/checkout@v4
 
@@ -33,9 +40,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
 
+      - name: Set variables
+        id: vars
+        run: |
+          echo "TAG=${{ inputs.tag || github.ref_name }}" >> $GITHUB_OUTPUT
+          echo "NAME=${{ inputs.name || 'feza' }}" >> $GITHUB_OUTPUT
+          echo "TARGETS=${{ inputs.targets || 'macos-arm64,macos-amd64,linux-amd64' }}" >> $GITHUB_OUTPUT
+
       - name: Plan release
         run: |
-          feza plan ${{ inputs.tag }} --name ${{ inputs.name }} --targets ${{ inputs.targets }}
+          feza plan "${{ steps.vars.outputs.TAG }}" --name "${{ steps.vars.outputs.NAME }}" --targets "${{ steps.vars.outputs.TARGETS }}"
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
 
@@ -55,6 +69,10 @@ jobs:
   build:
     needs: plan
     runs-on: ${{ matrix.os }}
+    outputs:
+      TAG: ${{ needs.plan.outputs.TAG }}
+      NAME: ${{ needs.plan.outputs.NAME }}
+      TARGETS: ${{ needs.plan.outputs.TARGETS }}
     strategy:
       matrix:
         include:
@@ -99,14 +117,14 @@ jobs:
             ./create_python_binaries.sh
           else
             echo "TODO: Build your binary for ${{ matrix.target }}"
-            echo "Binary should be placed at: build/${{ matrix.target }}/${{ inputs.name }}"
+            echo "Binary should be placed at: build/${{ matrix.target }}/${{ needs.plan.outputs.NAME }}"
             mkdir -p build/${{ matrix.target }}
-            touch build/${{ matrix.target }}/${{ inputs.name }}
+            touch build/${{ matrix.target }}/${{ needs.plan.outputs.NAME }}
           fi
 
       - name: Package and compute checksums
         run: |
-          feza build ${{ inputs.tag }} --name ${{ inputs.name }} \
+          feza build ${{ needs.plan.outputs.TAG }} --name ${{ needs.plan.outputs.NAME }} \
             --artifacts-dir build/ \
             --dist dist/ \
             --repo ${{ github.repository }}
@@ -157,7 +175,7 @@ jobs:
           path: dist/feza_manifest.json
 
   github:
-    needs: merge-manifest
+    needs: [plan, merge-manifest]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -197,13 +215,13 @@ jobs:
 
       - name: Create/update GitHub release
         run: |
-          feza github ${{ inputs.tag }} --name ${{ inputs.name }} \
+          feza github ${{ needs.plan.outputs.TAG }} --name ${{ needs.plan.outputs.NAME }} \
             --repo ${{ github.repository }} \
             --dist dist/ \
             --draft
 
   tap:
-    needs: github
+    needs: [plan, github]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -235,9 +253,9 @@ jobs:
 
       - name: Push to Homebrew tap
         run: |
-          feza tap ${{ inputs.tag }} --name ${{ inputs.name }} \
+          feza tap ${{ needs.plan.outputs.TAG }} --name ${{ needs.plan.outputs.NAME }} \
             --tap ${{ secrets.TAP_REPO }} \
-            --formula ${{ inputs.name }} \
+            --formula ${{ needs.plan.outputs.NAME }} \
             --open-pr
         env:
           TAP_PAT: ${{ secrets.TAP_PAT }}
