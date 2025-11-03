@@ -45,6 +45,13 @@ jobs:
           name: manifest
           path: dist/feza_manifest.json
 
+      - name: Upload Python script (if generated)
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: python-script
+          path: create_python_binaries.sh
+
   build:
     needs: plan
     runs-on: ${{ matrix.os }}
@@ -76,12 +83,26 @@ jobs:
           name: manifest
           path: dist/
 
+      - name: Download Python script (if exists)
+        uses: actions/download-artifact@v4
+        with:
+          name: python-script
+          path: .
+          continue-on-error: true
+
       - name: Build artifacts
         run: |
-          echo "TODO: Build your binary for ${{ matrix.target }}"
-          echo "Binary should be placed at: build/${{ matrix.target }}/${{ inputs.name }}"
-          mkdir -p build/${{ matrix.target }}
-          touch build/${{ matrix.target }}/${{ inputs.name }}
+          # If create_python_binaries.sh exists, run it to create Python wrappers
+          if [ -f create_python_binaries.sh ]; then
+            echo "Python project detected - running create_python_binaries.sh"
+            chmod +x create_python_binaries.sh
+            ./create_python_binaries.sh
+          else
+            echo "TODO: Build your binary for ${{ matrix.target }}"
+            echo "Binary should be placed at: build/${{ matrix.target }}/${{ inputs.name }}"
+            mkdir -p build/${{ matrix.target }}
+            touch build/${{ matrix.target }}/${{ inputs.name }}
+          fi
 
       - name: Package and compute checksums
         run: |
