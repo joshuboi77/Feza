@@ -638,7 +638,7 @@ def ensure_tap_repo_exists(
 
         # Create README.md
         org = tap_repo.split("/")[0] if "/" in tap_repo else "unknown"
-        readme_content = f"""# {tap_repo.split('/')[-1]}
+        readme_content = f"""# {tap_repo.split("/")[-1]}
 
 Homebrew tap for {org} packages.
 
