@@ -153,10 +153,19 @@ def cmd_plan(args):
         entry = detect_python_entry_point(args.name)
         if entry:
             module, func = entry
-            # Ensure Windows is always included in script generation targets
+            # Ensure Windows is always included in both manifest and script generation targets
+            if not any(t.startswith("windows") for t in targets):
+                targets.append("windows-amd64")
+                # Add Windows to assets if it was added to targets
+                assets.append(
+                    {
+                        "target": "windows-amd64",
+                        "filename": target_to_filename("windows-amd64", args.name),
+                        "sha256": "",
+                        "url": "",
+                    }
+                )
             script_targets = list(targets)
-            if not any(t.startswith("windows") for t in script_targets):
-                script_targets.append("windows-amd64")
             script_path = generate_python_binaries_script(
                 args.name, module, func, script_targets, "build"
             )
@@ -236,14 +245,25 @@ def cmd_build(args):
                     flush=True,
                 )
 
-                # Ensure script is executable
-                script_path.chmod(0o755)
+                # Ensure script is executable (Unix only)
+                if sys.platform != "win32":
+                    script_path.chmod(0o755)
 
-                result = subprocess.run(
-                    ["/bin/bash", str(script_path)],
-                    capture_output=False,
-                    check=False,
-                )
+                # Run script - on Windows, skip bash script execution (user must create binaries manually)
+                if sys.platform == "win32":
+                    print(
+                        "Warning: Cannot run bash script on Windows. Please create binaries manually or use CI.\n"
+                        "Binaries should be placed in build/<target>/<name> directories.\n",
+                        flush=True,
+                    )
+                    # Don't fail - let user create binaries manually
+                    result = type("obj", (object,), {"returncode": 0})()
+                else:
+                    result = subprocess.run(
+                        ["/bin/bash", str(script_path)],
+                        capture_output=False,
+                        check=False,
+                    )
 
                 if result.returncode != 0:
                     sys.exit(f"Error: failed to run {script_path} (exit code: {result.returncode})")
@@ -431,7 +451,9 @@ def cmd_bump(args):
     if new_version == current_version:
         sys.exit(f"Error: new version ({new_version}) is same as current version")
 
-    print(f"\nUpdating version: {current_version} → {new_version}")
+    # Use ASCII arrow to avoid Windows encoding issues
+    arrow = "->" if sys.platform == "win32" else "→"
+    print(f"\nUpdating version: {current_version} {arrow} {new_version}")
 
     # Update pyproject.toml
     update_version_in_pyproject(new_version)
