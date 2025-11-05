@@ -85,6 +85,8 @@ jobs:
             target: macos-amd64
           - os: ubuntu-latest
             target: linux-amd64
+          - os: windows-latest
+            target: windows-amd64
     steps:
       - uses: actions/checkout@v4
 
@@ -112,6 +114,7 @@ jobs:
           path: .
 
       - name: Build artifacts
+        shell: bash
         run: |
           # Find create_python_binaries.sh (artifact download might put it in a subdirectory)
           SCRIPT_PATH=$(find . -name "create_python_binaries.sh" -type f 2>/dev/null | head -1)
