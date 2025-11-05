@@ -135,6 +135,7 @@ jobs:
           fi
 
       - name: Package and compute checksums
+        shell: bash
         run: |
           feza build ${{ needs.plan.outputs.TAG }} --name ${{ needs.plan.outputs.NAME }} \
             --artifacts-dir build/ \
