@@ -224,10 +224,17 @@ def cmd_build(args):
             if entry and script_path.exists():
                 module, func = entry
                 print(
-                    f"\nPython project detected: {manifest['name']} ({module}:{func})", flush=True
+                    f"\nPython project detected: {manifest['name']} ({module}:{func})",
+                    flush=True,
                 )
-                print(f"Binaries missing for targets: {', '.join(missing_targets)}", flush=True)
-                print(f"Auto-running {script_path} to create wrapper binaries...\n", flush=True)
+                print(
+                    f"Binaries missing for targets: {', '.join(missing_targets)}",
+                    flush=True,
+                )
+                print(
+                    f"Auto-running {script_path} to create wrapper binaries...\n",
+                    flush=True,
+                )
 
                 # Ensure script is executable
                 script_path.chmod(0o755)
@@ -241,7 +248,10 @@ def cmd_build(args):
                 if result.returncode != 0:
                     sys.exit(f"Error: failed to run {script_path} (exit code: {result.returncode})")
 
-                print(f"Successfully created wrapper binaries via {script_path}\n", flush=True)
+                print(
+                    f"Successfully created wrapper binaries via {script_path}\n",
+                    flush=True,
+                )
 
     for asset in assets_to_process:
         target = asset["target"]
@@ -784,7 +794,12 @@ brew install <package>
             check=True,
         )
         subprocess.run(
-            ["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"],
+            [
+                "git",
+                "config",
+                "user.email",
+                "github-actions[bot]@users.noreply.github.com",
+            ],
             cwd=init_dir,
             check=True,
         )
@@ -880,7 +895,12 @@ def cmd_tap(args):
             check=True,
         )
         subprocess.run(
-            ["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"],
+            [
+                "git",
+                "config",
+                "user.email",
+                "github-actions[bot]@users.noreply.github.com",
+            ],
             cwd=tap_dir,
             check=True,
         )
@@ -922,7 +942,13 @@ def cmd_tap(args):
 
         # Set remote URL (without embedded token, let gh handle auth)
         subprocess.run(
-            ["git", "remote", "set-url", "origin", f"https://github.com/{args.tap}.git"],
+            [
+                "git",
+                "remote",
+                "set-url",
+                "origin",
+                f"https://github.com/{args.tap}.git",
+            ],
             cwd=tap_dir,
             check=True,
         )
