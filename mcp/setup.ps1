@@ -82,3 +82,4 @@ Write-Host "3. Restart Cursor to load the MCP server" -ForegroundColor White
 Write-Host ""
 
 
+
