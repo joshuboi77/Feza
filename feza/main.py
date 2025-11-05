@@ -153,7 +153,11 @@ def cmd_plan(args):
         entry = detect_python_entry_point(args.name)
         if entry:
             module, func = entry
-            script_path = generate_python_binaries_script(args.name, module, func, targets, "build")
+            # Ensure Windows is always included in script generation targets
+            script_targets = list(targets)
+            if not any(t.startswith("windows") for t in script_targets):
+                script_targets.append("windows-amd64")
+            script_path = generate_python_binaries_script(args.name, module, func, script_targets, "build")
             print(
                 f"\nPython project detected: {args.name} ({module}:{func})\n"
                 f"Generated: {script_path}\n"
