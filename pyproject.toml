@@ -43,3 +43,18 @@ combine-as-imports = true
 
 [tool.ruff.format]
 quote-style = "double"
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+extend-exclude = '''
+/(
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
