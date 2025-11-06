@@ -668,6 +668,88 @@ def detect_branch_conflict_error(stderr: str, branch: str, tap_repo: str) -> str
     return None
 
 
+def check_tap_conflicts(formula_name: str, target_tap: str, token: str) -> None:
+    """
+    Check if formula exists in other taps and warn the user.
+
+    Args:
+        formula_name: Name of the formula (e.g., "feza")
+        target_tap: Target tap repository (e.g., "joshuboi77/homebrew-feza")
+        token: GitHub token for API access
+    """
+    try:
+        # Extract org from target tap
+        org = target_tap.split("/")[0]
+
+        # Check common tap locations
+        common_taps = [
+            f"{org}/homebrew-tap",  # General purpose tap
+            f"{org}/homebrew-{formula_name}",  # Dedicated tap (current target)
+        ]
+
+        # Also check all homebrew repos for this org
+        import json
+        import urllib.request
+
+        headers = {"Authorization": f"token {token}"} if token else {}
+        req = urllib.request.Request(
+            f"https://api.github.com/orgs/{org}/repos?type=all&per_page=100",
+            headers=headers,
+        )
+
+        with urllib.request.urlopen(req) as response:
+            repos = json.loads(response.read())
+            homebrew_repos = [
+                r["name"]
+                for r in repos
+                if r["name"].startswith("homebrew-") and r["name"] != target_tap.split("/")[1]
+            ]
+            common_taps.extend([f"{org}/{repo}" for repo in homebrew_repos])
+
+        # Check each tap for the formula
+        formula_filename = f"{formula_name}.rb"
+        conflicts = []
+
+        for tap in common_taps:
+            if tap == target_tap:
+                continue  # Skip the target tap itself
+
+            try:
+                # Check if repo exists and has the formula
+                repo_path = f"Formula/{formula_filename}"
+                req = urllib.request.Request(
+                    f"https://api.github.com/repos/{tap}/contents/{repo_path}",
+                    headers=headers,
+                )
+                with urllib.request.urlopen(req) as response:
+                    # If we get here, the formula exists in this tap
+                    conflicts.append(tap)
+            except urllib.error.HTTPError as e:
+                if e.code == 404:
+                    # Formula doesn't exist in this tap, that's fine
+                    continue
+                # Other errors we can ignore
+                pass
+            except Exception:
+                # Ignore other errors (network, etc.)
+                pass
+
+        if conflicts:
+            print(
+                f"\n⚠️  Warning: Formula '{formula_name}' found in other tap(s): {', '.join(conflicts)}\n"
+                f"This may cause Homebrew conflicts. Consider removing the formula from:\n"
+                f"  - {', '.join(conflicts)}\n"
+                f"before updating '{target_tap}'.\n",
+                file=sys.stderr,
+            )
+            # Don't exit - just warn, let user decide
+
+    except Exception as e:
+        # If checking fails, just continue (don't fail the whole operation)
+        if os.getenv("CI"):
+            print(f"Warning: Could not check for tap conflicts: {e}", file=sys.stderr)
+
+
 def get_default_branch(repo_path: Path | str, remote: str = "origin") -> str:
     """Detect the default branch of a git repository."""
     repo_path = Path(repo_path)
@@ -885,6 +967,9 @@ def cmd_tap(args):
             f"Error: Tap repository '{args.tap}' doesn't exist. "
             "Create it manually or use --create-tap to auto-create."
         )
+
+    # Check if formula exists in other taps
+    check_tap_conflicts(args.formula, args.tap, tap_pat)
 
     # Auto-capitalize formula name for class (but keep original for filename)
     original_formula = args.formula
