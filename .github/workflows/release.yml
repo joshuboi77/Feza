@@ -247,7 +247,7 @@ jobs:
       - name: Authenticate GitHub CLI
         run: echo "GitHub CLI will use GH_TOKEN environment variable"
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.FEZA_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Download manifest and packages
         uses: actions/download-artifact@v4
@@ -269,7 +269,7 @@ jobs:
             --repo ${{ github.repository }} \
             --dist dist/
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.FEZA_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
 
   tap:
@@ -284,22 +284,29 @@ jobs:
       - name: Determine tap repository
         id: tap
         run: |
-          # Use explicit TAP_REPO secret if set, otherwise auto-detect: {org}/homebrew-tap
+          # Use explicit TAP_REPO secret if set, otherwise auto-detect: {org}/homebrew-{tool_name}
           ORG=$(echo "${{ github.repository }}" | cut -d'/' -f1)
+          TOOL_NAME="${{ needs.plan.outputs.NAME }}"
           TAP_REPO="${{ secrets.TAP_REPO }}"
           if [ -z "$TAP_REPO" ]; then
-            TAP_REPO="${ORG}/homebrew-tap"
-            echo "Auto-detected tap repo: $TAP_REPO"
+            TAP_REPO="${ORG}/homebrew-${TOOL_NAME}"
+            echo "Auto-detected tap repo: $TAP_REPO (based on tool name: ${TOOL_NAME})"
           else
             echo "Using configured tap repo: $TAP_REPO"
           fi
           echo "TAP_REPO=${TAP_REPO}" >> $GITHUB_OUTPUT
           
-          # Use TAP_PAT if set, otherwise fall back to GITHUB_TOKEN
+          # Use TAP_PAT if set, otherwise fall back to FEZA_TOKEN or GITHUB_TOKEN
           TAP_PAT="${{ secrets.TAP_PAT }}"
           if [ -z "$TAP_PAT" ]; then
-            TAP_PAT="${{ secrets.GITHUB_TOKEN }}"
-            echo "Using GITHUB_TOKEN for tap operations (may not work for cross-repo)"
+            # Try FEZA_TOKEN first (has read:org scope), fall back to GITHUB_TOKEN
+            TAP_PAT="${{ secrets.FEZA_TOKEN }}"
+            if [ -z "$TAP_PAT" ]; then
+              TAP_PAT="${{ secrets.GITHUB_TOKEN }}"
+              echo "Using GITHUB_TOKEN for tap operations (may not work for cross-repo)"
+            else
+              echo "Using FEZA_TOKEN for tap operations"
+            fi
           else
             echo "Using configured TAP_PAT"
           fi
