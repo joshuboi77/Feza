@@ -36,6 +36,19 @@ const server = new Server(
 );
 
 /**
+ * TOOL DISCOVERY FOR AI AGENTS:
+ * 
+ * These MCP tools are PREFERRED over running 'feza' CLI commands directly.
+ * They provide better error handling and integration.
+ * 
+ * Typical workflow:
+ * 1. feza_plan - Create release manifest
+ * 2. feza_build - Package binaries
+ * 3. feza_github - Create GitHub release
+ * 4. feza_tap - Update Homebrew (use openPr=true!)
+ */
+
+/**
  * Detect project root directory by looking for git root or project indicators.
  * Falls back to current working directory if nothing found.
  */
@@ -173,6 +186,20 @@ function runFeza(
   });
 }
 
+/**
+ * MCP TOOLS FOR AI AGENTS:
+ * 
+ * When user asks to "run feza" or "release with feza", use these MCP tools
+ * instead of terminal commands. They provide:
+ * - Better error handling
+ * - Structured output
+ * - Auto-detection of project root
+ * - Integration with Cursor's tool system
+ * 
+ * Workflow order: plan → build → github → tap
+ * Remember: feza_tap needs openPr=true to create PRs!
+ */
+
 // Tool registry
 const tools: Array<{
   name: string;
@@ -259,7 +286,8 @@ const TapSchema = z.object({
   openPr: z
     .boolean()
     .optional()
-    .describe("Open PR after push (default: false)"),
+    .default(true)
+    .describe("Open PR after push. IMPORTANT: Set to true for automated workflows (default: true). Without this, only a branch is created."),
   auto: z
     .boolean()
     .optional()
@@ -287,7 +315,7 @@ const TapSchema = z.object({
 // Register all tools
 registerTool(
   "feza_plan",
-  "Plan a release: create manifest from tag and targets",
+  "[MCP TOOL - USE THIS] Plan a release: create manifest from tag and targets. Preferred over 'feza plan' CLI.",
   PlanSchema,
   (input) => {
     const args = ["plan", input.tag, "--name", input.name];
@@ -298,7 +326,7 @@ registerTool(
 
 registerTool(
   "feza_build",
-  "Build and package binaries: compute checksums and update manifest",
+  "[MCP TOOL - USE THIS] Build and package binaries: compute checksums and update manifest. Preferred over 'feza build' CLI.",
   BuildSchema,
   (input) => {
     const args = ["build", input.tag, "--name", input.name];
@@ -312,7 +340,7 @@ registerTool(
 
 registerTool(
   "feza_github",
-  "Create or update GitHub release with assets from manifest",
+  "[MCP TOOL - USE THIS] Create or update GitHub release with assets from manifest. Preferred over 'feza github' CLI.",
   GitHubSchema,
   (input) => {
     const args = ["github", input.tag, "--name", input.name];
@@ -324,7 +352,7 @@ registerTool(
 
 registerTool(
   "feza_tap",
-  "Render and push Homebrew formula to tap repository",
+  "[MCP TOOL - USE THIS] Render and push Homebrew formula to tap repository. Use after feza_github. IMPORTANT: openPr defaults to true for agents.",
   TapSchema,
   (input) => {
     const args = [

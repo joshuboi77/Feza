@@ -11,6 +11,16 @@ This MCP server allows you to use Feza directly within Cursor, making release wo
 - **feza_github** - Create/update GitHub releases
 - **feza_tap** - Render and push Homebrew formulas
 
+## For AI Agents
+
+**IMPORTANT:** When a user asks to "run feza" or perform a release, use these MCP tools instead of terminal commands. The tools are prefixed with `feza_` (e.g., `feza_plan`, `feza_build`).
+
+**Key points:**
+
+- Always use `openPr: true` for `feza_tap` to automatically create PRs (this is now the default)
+- Tools auto-detect project root and repository
+- Workflow: plan → build → github → tap
+
 ## Installation
 
 ### Prerequisites
@@ -99,9 +109,10 @@ After configuring and restarting Cursor:
 2. feza_build(tag="v1.0.0", name="mytool", repo="org/repo")
 3. feza_github(tag="v1.0.0", name="mytool", repo="org/repo")
 4. feza_tap(tag="v1.0.0", name="mytool", formula="Mytool", 
-            tap="org/homebrew-tap", openPr=true, auto=true, 
-            nonInteractive=true)
+            tap="org/homebrew-tap", auto=true, nonInteractive=true)
 ```
+
+Note: `openPr` defaults to `true` for `feza_tap`, so you don't need to specify it unless you want to disable PR creation.
 
 ## Development
 
