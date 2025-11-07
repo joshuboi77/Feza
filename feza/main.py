@@ -569,7 +569,7 @@ def cmd_github(args):
         except subprocess.CalledProcessError:
             # If not in a git repo or git command fails, let gh create tag from remote HEAD
             current_commit = None
-        
+
         # Create release (publish if --draft not specified, otherwise draft)
         # Use --target to explicitly specify which commit to tag
         cmd = ["gh", "release", "create", tag, "--repo", repo, "--title", tag]
@@ -1075,11 +1075,14 @@ def cmd_tap(args):
             "_", "-"
         )  # Homebrew uses lowercase filenames
         formula_path = formula_dir / f"{formula_filename}.rb"
-        
+
         # Remove any case-variant files to prevent conflicts on case-insensitive filesystems
         # (e.g., if both Feza.rb and feza.rb exist, remove the uppercase one)
         for existing_file in formula_dir.glob("*.rb"):
-            if existing_file.name.lower() == formula_path.name.lower() and existing_file.name != formula_path.name:
+            if (
+                existing_file.name.lower() == formula_path.name.lower()
+                and existing_file.name != formula_path.name
+            ):
                 # Case-variant file exists - remove it from git and filesystem
                 relative_path = str(existing_file.relative_to(tap_dir))
                 # Try to remove from git (will fail silently if not tracked)
@@ -1099,7 +1102,7 @@ def cmd_tap(args):
                 # Remove from filesystem if it still exists
                 if existing_file.exists():
                     existing_file.unlink()
-        
+
         formula_path.write_text(formula_content)
 
         # Stage files (ensure Formula directory and file are staged)
