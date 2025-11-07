@@ -247,7 +247,7 @@ jobs:
       - name: Authenticate GitHub CLI
         run: echo "GitHub CLI will use GH_TOKEN environment variable"
         env:
-          GH_TOKEN: ${{ secrets.FEZA_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.TAP_PAT || secrets.GITHUB_TOKEN }}
 
       - name: Download manifest and packages
         uses: actions/download-artifact@v4
@@ -269,7 +269,7 @@ jobs:
             --repo ${{ github.repository }} \
             --dist dist/
         env:
-          GH_TOKEN: ${{ secrets.FEZA_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.TAP_PAT || secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
 
   tap:
@@ -296,17 +296,11 @@ jobs:
           fi
           echo "TAP_REPO=${TAP_REPO}" >> $GITHUB_OUTPUT
           
-          # Use TAP_PAT if set, otherwise fall back to FEZA_TOKEN or GITHUB_TOKEN
+          # Use TAP_PAT if set, otherwise fall back to GITHUB_TOKEN
           TAP_PAT="${{ secrets.TAP_PAT }}"
           if [ -z "$TAP_PAT" ]; then
-            # Try FEZA_TOKEN first (has read:org scope), fall back to GITHUB_TOKEN
-            TAP_PAT="${{ secrets.FEZA_TOKEN }}"
-            if [ -z "$TAP_PAT" ]; then
-              TAP_PAT="${{ secrets.GITHUB_TOKEN }}"
-              echo "Using GITHUB_TOKEN for tap operations (may not work for cross-repo)"
-            else
-              echo "Using FEZA_TOKEN for tap operations"
-            fi
+            TAP_PAT="${{ secrets.GITHUB_TOKEN }}"
+            echo "Using GITHUB_TOKEN for tap operations (may not work for cross-repo)"
           else
             echo "Using configured TAP_PAT"
           fi
