@@ -505,6 +505,29 @@ def get_repo_from_env() -> str:
     return repo
 
 
+def get_repo_from_git() -> str | None:
+    """Get repository from current git remote."""
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            url = result.stdout.strip()
+            # Extract org/repo from various URL formats:
+            # https://github.com/org/repo.git
+            # git@github.com:org/repo.git
+            # https://github.com/org/repo
+            match = re.search(r"github\.com[:/]([^/]+/[^/]+?)(?:\.git)?$", url)
+            if match:
+                return match.group(1)
+    except Exception:
+        pass
+    return None
+
+
 def cmd_github(args):
     """GitHub command: create/update draft release and upload assets."""
     tag, version = validate_tag(args.tag)
@@ -751,27 +774,16 @@ def check_tap_conflicts(formula_name: str, target_tap: str, token: str) -> None:
 
 
 def get_default_branch(repo_path: Path | str, remote: str = "origin") -> str:
-    """Detect the default branch of a git repository."""
+    """Detect the default branch of a git repository.
+    
+    Prefers standard branch names (main, master) over feza/* branches.
+    Homebrew taps should use main/master as default, not feature branches.
+    """
     repo_path = Path(repo_path)
     try:
-        # Try to get default branch from remote HEAD
-        result = subprocess.run(
-            ["git", "symbolic-ref", f"refs/remotes/{remote}/HEAD"],
-            cwd=repo_path,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode == 0:
-            # Extract branch name: refs/remotes/origin/feza/v0.1.0 -> feza/v0.1.0
-            ref = result.stdout.strip()
-            prefix = f"refs/remotes/{remote}/"
-            if ref.startswith(prefix):
-                branch = ref[len(prefix) :]
-                return branch
-
-        # Fallback: try common branch names
-        for branch in ["main", "master", "default"]:
+        # First priority: try common standard branch names (main, master)
+        # These are what Homebrew expects for taps
+        for branch in ["main", "master"]:
             result = subprocess.run(
                 ["git", "show-ref", f"refs/remotes/{remote}/{branch}"],
                 cwd=repo_path,
@@ -782,7 +794,25 @@ def get_default_branch(repo_path: Path | str, remote: str = "origin") -> str:
             if result.returncode == 0:
                 return branch
 
-        # Last resort: get first actual branch (skip HEAD pointer)
+        # Second priority: get default branch from remote HEAD
+        # But only if it's NOT a feza/* branch
+        result = subprocess.run(
+            ["git", "symbolic-ref", f"refs/remotes/{remote}/HEAD"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            ref = result.stdout.strip()
+            prefix = f"refs/remotes/{remote}/"
+            if ref.startswith(prefix):
+                branch = ref[len(prefix) :]
+                # Skip feza/* branches - these are PR branches, not default branches
+                if not branch.startswith("feza/"):
+                    return branch
+
+        # Last resort: get first actual branch that's not a feza/* branch
         result = subprocess.run(
             ["git", "branch", "-r", "--format", "%(refname:short)"],
             cwd=repo_path,
@@ -791,7 +821,6 @@ def get_default_branch(repo_path: Path | str, remote: str = "origin") -> str:
             check=False,
         )
         if result.returncode == 0 and result.stdout.strip():
-            # Get first actual remote branch (skip "origin" line and HEAD pointer)
             branches = [b.strip() for b in result.stdout.strip().split("\n") if b.strip()]
             for branch in branches:
                 # Skip HEAD pointer and "origin" standalone line
@@ -800,8 +829,9 @@ def get_default_branch(repo_path: Path | str, remote: str = "origin") -> str:
                 # Extract branch name from origin/branch-name
                 if "/" in branch:
                     branch_name = branch.split("/", 1)[1]
-                    # Skip if it's a tag (tags usually don't have slashes or are in refs/tags)
-                    # But if it looks like a branch (has / in name), use it
+                    # Skip feza/* branches - these are PR branches
+                    if branch_name.startswith("feza/"):
+                        continue
                     return branch_name
     except Exception:
         pass
@@ -942,7 +972,12 @@ def cmd_tap(args):
 
     if not args.tap:
         # Auto-detect tap repo if not provided
-        main_repo = args.repo or os.environ.get("GITHUB_REPOSITORY", "")
+        # Priority: 1) git remote, 2) args.repo, 3) GITHUB_REPOSITORY env
+        main_repo = (
+            get_repo_from_git()
+            or args.repo
+            or os.environ.get("GITHUB_REPOSITORY", "")
+        )
         if main_repo:
             org = main_repo.split("/")[0]
             tool_name = manifest["name"].lower()
