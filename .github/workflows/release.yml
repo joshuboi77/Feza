@@ -287,7 +287,21 @@ jobs:
           # Use explicit TAP_REPO secret if set, otherwise auto-detect: {org}/homebrew-{tool_name}
           ORG=$(echo "${{ github.repository }}" | cut -d'/' -f1)
           TOOL_NAME="${{ needs.plan.outputs.NAME }}"
+          
+          # Ensure TOOL_NAME is not empty - default to 'feza' if missing
+          if [ -z "$TOOL_NAME" ]; then
+            echo "WARNING: TOOL_NAME is empty, defaulting to 'feza'"
+            TOOL_NAME="feza"
+          fi
+          
           TAP_REPO="${{ secrets.TAP_REPO }}"
+          
+          # Debug output
+          echo "DEBUG: ORG=${ORG}"
+          echo "DEBUG: TOOL_NAME=${TOOL_NAME}"
+          echo "DEBUG: TAP_REPO secret is: [${TAP_REPO}]"
+          echo "DEBUG: TAP_REPO length: ${#TAP_REPO}"
+          
           if [ -z "$TAP_REPO" ]; then
             TAP_REPO="${ORG}/homebrew-${TOOL_NAME}"
             echo "Auto-detected tap repo: $TAP_REPO (based on tool name: ${TOOL_NAME})"
