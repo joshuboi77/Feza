@@ -410,23 +410,48 @@ jobs:
           # Set remote URL with token for push
           git remote set-url origin https://${{ steps.tap.outputs.TAP_PAT }}@github.com/${{ steps.tap.outputs.TAP_REPO }}.git
           
+          # Authenticate gh CLI
+          echo "${{ steps.tap.outputs.TAP_PAT }}" | gh auth login --with-token
+          
           # Create branch for PR (same pattern as feza tap command)
           BRANCH_NAME="feza/${{ needs.plan.outputs.TAG }}"
-          git checkout -b $BRANCH_NAME
+          
+          # Check if PR already exists
+          EXISTING_PR=$(gh pr list --repo ${{ steps.tap.outputs.TAP_REPO }} --head $BRANCH_NAME --state all --json number --jq '.[0].number' || echo "")
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR #$EXISTING_PR already exists for branch $BRANCH_NAME, skipping creation"
+            exit 0
+          fi
+          
+          # Check if branch exists on remote
+          if git ls-remote --heads origin $BRANCH_NAME | grep -q .; then
+            echo "Branch $BRANCH_NAME already exists on remote, checking out and updating"
+            git fetch origin $BRANCH_NAME
+            git checkout -b $BRANCH_NAME origin/$BRANCH_NAME || git checkout $BRANCH_NAME
+          else
+            git checkout -b $BRANCH_NAME
+          fi
           
           # Commit formula changes
           git add Formula/*.rb
-          git commit -m "Update ${{ needs.plan.outputs.NAME }} to ${{ needs.plan.outputs.TAG }}" || exit 0
+          if git diff --staged --quiet; then
+            echo "No changes to commit, formula already up to date"
+          else
+            git commit -m "Update ${{ needs.plan.outputs.NAME }} to ${{ needs.plan.outputs.TAG }}"
+          fi
           
-          # Push branch (not main)
-          git push origin $BRANCH_NAME || exit 0
+          # Push branch (force push if it already existed, otherwise normal push)
+          if git ls-remote --heads origin $BRANCH_NAME | grep -q .; then
+            git push origin $BRANCH_NAME --force-with-lease || git push origin $BRANCH_NAME
+          else
+            git push origin $BRANCH_NAME
+          fi
           
           # Detect default branch dynamically (don't hardcode main)
           DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || git branch -r --format '%(refname:short)' | head -1 | sed 's@origin/@@' || echo "main")
           echo "Detected default branch: $DEFAULT_BRANCH"
           
           # Create PR using gh CLI
-          echo "${{ steps.tap.outputs.TAP_PAT }}" | gh auth login --with-token
           gh pr create \
             --repo ${{ steps.tap.outputs.TAP_REPO }} \
             --base "$DEFAULT_BRANCH" \
