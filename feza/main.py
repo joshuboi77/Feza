@@ -775,7 +775,7 @@ def check_tap_conflicts(formula_name: str, target_tap: str, token: str) -> None:
 
 def get_default_branch(repo_path: Path | str, remote: str = "origin") -> str:
     """Detect the default branch of a git repository.
-    
+
     Prefers standard branch names (main, master) over feza/* branches.
     Homebrew taps should use main/master as default, not feature branches.
     """
@@ -973,11 +973,7 @@ def cmd_tap(args):
     if not args.tap:
         # Auto-detect tap repo if not provided
         # Priority: 1) git remote, 2) args.repo, 3) GITHUB_REPOSITORY env
-        main_repo = (
-            get_repo_from_git()
-            or args.repo
-            or os.environ.get("GITHUB_REPOSITORY", "")
-        )
+        main_repo = get_repo_from_git() or args.repo or os.environ.get("GITHUB_REPOSITORY", "")
         if main_repo:
             org = main_repo.split("/")[0]
             tool_name = manifest["name"].lower()
