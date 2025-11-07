@@ -1057,14 +1057,22 @@ def cmd_tap(args):
         for existing_file in formula_dir.glob("*.rb"):
             if existing_file.name.lower() == formula_path.name.lower() and existing_file.name != formula_path.name:
                 # Case-variant file exists - remove it from git and filesystem
-                try:
-                    subprocess.run(
-                        ["git", "rm", "--cached", str(existing_file.relative_to(tap_dir))],
-                        cwd=tap_dir,
-                        check=False,  # Don't fail if file not in git
-                    )
-                except Exception:
-                    pass
+                relative_path = str(existing_file.relative_to(tap_dir))
+                # Try to remove from git (will fail silently if not tracked)
+                subprocess.run(
+                    ["git", "rm", "-f", relative_path],
+                    cwd=tap_dir,
+                    check=False,  # Don't fail if file not in git
+                    capture_output=True,
+                )
+                # Also try cached removal in case file is staged but not committed
+                subprocess.run(
+                    ["git", "rm", "--cached", "-f", relative_path],
+                    cwd=tap_dir,
+                    check=False,
+                    capture_output=True,
+                )
+                # Remove from filesystem if it still exists
                 if existing_file.exists():
                     existing_file.unlink()
         

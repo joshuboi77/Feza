@@ -347,10 +347,16 @@ jobs:
       - name: Generate and update formula
         run: |
           cd main-repo
-          FORMULA_NAME=$(echo "${{ needs.plan.outputs.NAME }}" | awk '{print toupper(substr($0,1,1)) tolower(substr($0,2))}')
+          # Formula class name (capitalized) for template
+          FORMULA_CLASS=$(echo "${{ needs.plan.outputs.NAME }}" | awk '{print toupper(substr($0,1,1)) tolower(substr($0,2))}')
+          # Formula filename (lowercase) per Homebrew conventions
+          FORMULA_FILENAME=$(echo "${{ needs.plan.outputs.NAME }}" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
           
           python -c "
           import sys
+          import os
+          import subprocess
+          from pathlib import Path
           sys.path.insert(0, '.')
           from feza.main import render_formula
           import json
@@ -363,12 +369,26 @@ jobs:
               homepage = 'https://github.com/${{ github.repository }}'
           
           args = Args()
-          formula_content = render_formula(None, manifest, '${FORMULA_NAME}', args)
+          formula_content = render_formula(None, manifest, '${FORMULA_CLASS}', args)
           
-          with open('../tap-repo/Formula/${FORMULA_NAME}.rb', 'w') as f:
-              f.write(formula_content)
+          # Write to tap repo
+          tap_repo = Path('../tap-repo')
+          formula_dir = tap_repo / 'Formula'
+          formula_dir.mkdir(parents=True, exist_ok=True)
+          formula_path = formula_dir / '${FORMULA_FILENAME}.rb'
           
-          print('Generated formula: Formula/${FORMULA_NAME}.rb')
+          # Remove any case-variant files to prevent conflicts on case-insensitive filesystems
+          for existing_file in formula_dir.glob('*.rb'):
+              if existing_file.name.lower() == formula_path.name.lower() and existing_file.name != formula_path.name:
+                  # Case-variant file exists - remove it from git and filesystem
+                  relative_path = str(existing_file.relative_to(tap_repo))
+                  subprocess.run(['git', 'rm', '-f', relative_path], cwd=tap_repo, check=False, capture_output=True)
+                  subprocess.run(['git', 'rm', '--cached', '-f', relative_path], cwd=tap_repo, check=False, capture_output=True)
+                  if existing_file.exists():
+                      existing_file.unlink()
+          
+          formula_path.write_text(formula_content)
+          print(f'Generated formula: Formula/${FORMULA_FILENAME}.rb')
           "
 
       - name: Install GitHub CLI
