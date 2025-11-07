@@ -528,6 +528,17 @@ def get_repo_from_git() -> str | None:
     return None
 
 
+def get_current_commit() -> str:
+    """Get current HEAD commit hash."""
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout.strip()
+
+
 def cmd_github(args):
     """GitHub command: create/update draft release and upload assets."""
     tag, version = validate_tag(args.tag)
@@ -552,8 +563,18 @@ def cmd_github(args):
     )
 
     if result.returncode != 0:
+        # Get current commit to explicitly tag the correct commit
+        try:
+            current_commit = get_current_commit()
+        except subprocess.CalledProcessError:
+            # If not in a git repo or git command fails, let gh create tag from remote HEAD
+            current_commit = None
+        
         # Create release (publish if --draft not specified, otherwise draft)
+        # Use --target to explicitly specify which commit to tag
         cmd = ["gh", "release", "create", tag, "--repo", repo, "--title", tag]
+        if current_commit:
+            cmd.extend(["--target", current_commit])
         if args.draft:
             cmd.append("--draft")
         if args.release_notes and Path(args.release_notes).exists():
@@ -563,7 +584,10 @@ def cmd_github(args):
                 notes_path = f.name
             cmd.extend(["--notes-file", notes_path])
         subprocess.run(cmd, check=True)
-        print(f"Created draft release: {tag}")
+        if current_commit:
+            print(f"Created release: {tag} (tagged commit {current_commit[:7]})")
+        else:
+            print(f"Created release: {tag}")
     else:
         print(f"Release {tag} already exists (updating)")
 
