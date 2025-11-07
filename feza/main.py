@@ -1051,6 +1051,23 @@ def cmd_tap(args):
             "_", "-"
         )  # Homebrew uses lowercase filenames
         formula_path = formula_dir / f"{formula_filename}.rb"
+        
+        # Remove any case-variant files to prevent conflicts on case-insensitive filesystems
+        # (e.g., if both Feza.rb and feza.rb exist, remove the uppercase one)
+        for existing_file in formula_dir.glob("*.rb"):
+            if existing_file.name.lower() == formula_path.name.lower() and existing_file.name != formula_path.name:
+                # Case-variant file exists - remove it from git and filesystem
+                try:
+                    subprocess.run(
+                        ["git", "rm", "--cached", str(existing_file.relative_to(tap_dir))],
+                        cwd=tap_dir,
+                        check=False,  # Don't fail if file not in git
+                    )
+                except Exception:
+                    pass
+                if existing_file.exists():
+                    existing_file.unlink()
+        
         formula_path.write_text(formula_content)
 
         # Stage files (ensure Formula directory and file are staged)
