@@ -26,7 +26,7 @@ const __dirname = path.dirname(__filename);
 const server = new Server(
   {
     name: "feza-mcp",
-    version: "0.5.13",
+    version: "0.5.26",
   },
   {
     capabilities: {
@@ -198,6 +198,31 @@ function runFeza(
  * 
  * Workflow order: plan → build → github → tap
  * Remember: feza_tap needs openPr=true to create PRs!
+ * 
+ * ⚠️ CRITICAL WARNINGS FOR AI AGENTS:
+ * 
+ * 1. AUTOMATED WORKFLOW: If the project has a GitHub Actions release workflow
+ *    (`.github/workflows/release.yml`), it will automatically:
+ *    - Build packages in CI from the tagged commit
+ *    - Compute correct checksums from actual built packages
+ *    - Create GitHub release with correct assets
+ *    - Generate Homebrew formula with correct checksums
+ *    - Create PR automatically
+ * 
+ * 2. MANUAL INTERVENTION: Only use these tools manually if:
+ *    - The automated workflow is not set up
+ *    - You need to fix a broken release
+ *    - The workflow failed and needs manual recovery
+ * 
+ * 3. CHECKSUM ERRORS: If you see checksum mismatches:
+ *    - DO NOT use checksums from local `dist/feza_manifest.json` (from local builds)
+ *    - DO use checksums from actual GitHub release assets
+ *    - The workflow computes checksums correctly; manual PRs with wrong checksums cause errors
+ * 
+ * 4. BEST PRACTICE: For projects with automated workflows, prefer:
+ *    - Creating a git tag (triggers workflow automatically)
+ *    - Letting the workflow handle everything
+ *    - Only manually intervene if workflow fails
  */
 
 // Tool registry
@@ -243,7 +268,7 @@ const BuildSchema = z.object({
   dist: z
     .string()
     .optional()
-    .describe("Distribution directory (default: dist)"),
+    .describe("Distribution directory (default: dist). ⚠️ WARNING: Local builds create checksums that may not match CI-built packages. Prefer automated workflow if available."),
   artifactsDir: z
     .string()
     .optional()
@@ -265,7 +290,7 @@ const GitHubSchema = z.object({
   dist: z
     .string()
     .optional()
-    .describe("Distribution directory (default: dist)"),
+    .describe("Distribution directory (default: dist). ⚠️ WARNING: Local manifest may have checksums that don't match CI-built packages. Prefer automated workflow if available."),
   cwd: z.string().optional().describe("Working directory (default: auto-detect project root)"),
 });
 
@@ -326,7 +351,7 @@ registerTool(
 
 registerTool(
   "feza_build",
-  "[MCP TOOL - USE THIS] Build and package binaries: compute checksums and update manifest. Preferred over 'feza build' CLI.",
+  "[MCP TOOL - USE THIS] Build and package binaries: compute checksums and update manifest. Preferred over 'feza build' CLI. ⚠️ WARNING: If project has automated GitHub Actions workflow, prefer creating a git tag to trigger the workflow instead. Manual builds create local manifest checksums that may not match CI-built packages.",
   BuildSchema,
   (input) => {
     const args = ["build", input.tag, "--name", input.name];
@@ -340,7 +365,7 @@ registerTool(
 
 registerTool(
   "feza_github",
-  "[MCP TOOL - USE THIS] Create or update GitHub release with assets from manifest. Preferred over 'feza github' CLI.",
+  "[MCP TOOL - USE THIS] Create or update GitHub release with assets from manifest. Preferred over 'feza github' CLI. ⚠️ WARNING: If project has automated GitHub Actions workflow, prefer creating a git tag to trigger the workflow instead. Manual releases may use local manifest checksums that don't match CI-built packages.",
   GitHubSchema,
   (input) => {
     const args = ["github", input.tag, "--name", input.name];
@@ -352,7 +377,7 @@ registerTool(
 
 registerTool(
   "feza_tap",
-  "[MCP TOOL - USE THIS] Render and push Homebrew formula to tap repository. Use after feza_github. IMPORTANT: openPr defaults to true for agents.",
+  "[MCP TOOL - USE THIS] Render and push Homebrew formula to tap repository. Use after feza_github. IMPORTANT: openPr defaults to true for agents. ⚠️ CRITICAL WARNING: If project has automated GitHub Actions workflow, DO NOT manually create PRs using local manifest checksums. The workflow automatically creates PRs with correct checksums from CI-built packages. Only use this tool manually if: (1) workflow is not set up, (2) fixing a broken release, or (3) workflow failed. When manually fixing, use checksums from actual GitHub release assets, NOT from local dist/feza_manifest.json.",
   TapSchema,
   (input) => {
     const args = [
